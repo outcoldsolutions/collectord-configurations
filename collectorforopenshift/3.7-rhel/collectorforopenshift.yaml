@@ -1017,7 +1017,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.4
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.5.203
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1165,7 +1165,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.4
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.5.203
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1281,7 +1281,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.4
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.5.203
         securityContext:
           privileged: true
           runAsUser: 0
