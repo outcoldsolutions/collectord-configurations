@@ -1052,7 +1052,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.7.220
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.8.230
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1206,7 +1206,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.7.220
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.8.230
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1330,7 +1330,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.7.220
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.8.230
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

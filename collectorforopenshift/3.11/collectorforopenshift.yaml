@@ -10,6 +10,13 @@ metadata:
     openshift.io/display-name: 'Collector for OpenShift'
 
 ---
+apiVersion: scheduling.k8s.io/v1beta1
+kind: PriorityClass
+metadata:
+  name: collectorforopenshift-critical
+value: 1000000000
+
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -1074,7 +1081,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.7.220
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.8.230
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1226,7 +1233,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.7.220
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.8.230
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1346,7 +1353,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.7.220
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.8.230
         securityContext:
           privileged: true
           runAsUser: 0
