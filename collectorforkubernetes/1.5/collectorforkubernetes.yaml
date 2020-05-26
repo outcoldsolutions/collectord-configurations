@@ -1,0 +1,1100 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app: collectorforkubernetes
+  name: collectorforkubernetes
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: collectorforkubernetes
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: kube-system
+  name: kube-controller-manager-collectorforkubernetes-discovery
+  labels:
+    k8s-app: kube-controller-manager
+spec:
+  selector:
+    k8s-app: kube-controller-manager
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: http-metrics
+    port: 10252
+    targetPort: 10252
+    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: kube-system
+  name: kube-scheduler-collectorforkubernetes-discovery
+  labels:
+    k8s-app: kube-scheduler
+spec:
+  selector:
+    k8s-app: kube-scheduler
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: http-metrics
+    port: 10251
+    targetPort: 10251
+    protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
+  labels:
+    app: collectorforkubernetes
+data:
+  001-general.conf: |
+    # The general configuration is used for all deployments
+    #
+    # Run collector with the flag -conf and specify location of the configuration files.
+    #
+    # You can override all the values using environment variables with the format like
+    #   COLLECTOR__<ANYNAME>=<section>__<key>=<value>
+    # As an example you can set dataPath in [general] section as
+    #   COLLECTOR__DATAPATH=general__dataPath=C:\\some\\path\\data.db
+    # This parameter can be configured using -env-override, set it to empty string to disable this feature
+
+    [general]
+
+    # Review EULA https://www.outcoldsolutions.com/docs/license-agreement/
+    # and accept EULA by changing the value to *true*
+    acceptEULA = false
+
+    # Location for the database
+    # Collector stores positions of the files and internal state
+    dataPath = ./data/
+
+    # log level (accepted values are trace, debug, info, warn, error, fatal)
+    logLevel = info
+
+    # http server gives access to two endpoints
+    # /healthz
+    # /metrics
+    httpServerBinding =
+
+    # telemetry report endpoint, set it to empty string to disable telemetry
+    telemetryEndpoint = https://license.outcold.solutions/telemetry/
+
+    # license check endpoint
+    licenseEndpoint = https://license.outcold.solutions/license/
+
+    # license server through proxy
+    licenseServerProxyUrl =
+
+    # license key
+    license =
+
+    # Environment variable $KUBERNETES_NODENAME is used by default to setup hostname
+    # Use value below to override specific name
+    hostname =
+
+    # Default buffer size for file input
+    fileInputBufferSize = 256b
+
+    # Maximum size of one line the file reader can read
+    fileInputLineMaxSize = 1mb
+
+    # Include custom fields to attach to every event, in example below every event sent to Splunk will hav
+    # indexed field my_environment=dev. Fields names should match to ^[a-z][_a-z0-9]*$
+    # Better way to configure that is to specify labels for Kubernetes Nodes.
+    # ; fields.my_environment = dev
+
+
+    # connection to kubernetes api
+    [general.kubernetes]
+
+    # Environment variable $KUBERNETES_NODENAME is used by default to setup nodeName
+    # Use it only when you need to override it
+    nodeName =
+
+    # Configuration to access the API server,
+    # see https://kubernetes.io/docs/tasks/access-application-cluster/access-cluster/#accessing-the-api-from-a-pod
+    # for details
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    # Default timeout for http responses. The streaming/watch requests depend on this timeout.
+    timeout = 5m
+
+    # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
+    # metadataFetchRetry = 5s
+
+    # (obsolete) In case if event is recent, how long pipeline should wait for the metadata to be available in Kubernetes API
+    # metadataFetchWait = 30s
+
+    # How long to keep the cache for the recent calls to API server (to limit number of calls when collector discovers new pods)
+    metadataTTL = 30s
+
+    # regex to find pods
+    podsCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?$
+
+    # regex to find containers in the pods
+    containersCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?/(docker-|crio-)?[0-9a-f]{64}(\.scope)?(\/.+)?$
+
+    # path to the kubelet root location (use it to discover application logs for emptyDir)
+    # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
+    volumesRootDir = /rootfs/var/lib/kubelet/
+
+
+    # Splunk output
+    [output.splunk]
+
+    # Splunk HTTP Event Collector url
+    url =
+    # You can specify muiltiple splunk URls with
+    #
+    # urls.0 = https://server1:8088/services/collector/event/1.0
+    # urls.1 = https://server1:8088/services/collector/event/1.0
+    # urls.2 = https://server1:8088/services/collector/event/1.0
+    #
+    # Limitations:
+    # * The urls cannot have different path.
+
+    # Specify how URL should be picked up (in case if multiple is used)
+    # urlSelection = random|round-robin|random-with-round-robin
+    # where:
+    # * random - choose random url on first selection and after each failure (connection or HTTP status code >= 500)
+    # * round-robin - choose url starting from first one and bump on each failure (connection or HTTP status code >= 500)
+    # * random-with-round-robin - choose random url on first selection and after that in round-robin on each
+    #                             failure (connection or HTTP status code >= 500)
+    urlSelection = random-with-round-robin
+
+    # Splunk HTTP Event Collector Token
+    token =
+
+    # Allow invalid SSL server certificate
+    insecure = false
+
+    # Path to CA cerificate
+    caPath =
+
+    # CA Name to verify
+    caName =
+
+    # path for client certificate (if required)
+    clientCertPath =
+
+    # path for client key (if required)
+    clientKeyPath =
+
+    # Events are batched with the maximum size set by batchSize and staying in pipeline for not longer
+    # than set by frequency
+    frequency = 5s
+    batchSize = 768K
+
+    # Splunk through proxy
+    proxyUrl =
+
+    # Splunk acknowledgement url (.../services/collector/ack)
+    ackUrl =
+    # You can specify muiltiple splunk URls for ackUrl
+    #
+    # ackUrls.0 = https://server1:8088/services/collector/ack
+    # ackUrls.1 = https://server1:8088/services/collector/ack
+    # ackUrls.2 = https://server1:8088/services/collector/ack
+    #
+    # Make sure that they in the same order as urls for url, to make sure that this Splunk instance will be
+    # able to acknowledge the payload.
+    #
+    # Limitations:
+    # * The urls cannot have different path.
+
+    # Enable index acknowledgment
+    ackEnabled = false
+
+    # Index acknowledgment timeout
+    ackTimeout = 3m
+
+    # Timeout specifies a time limit for requests made by collector.
+    # The timeout includes connection time, any
+    # redirects, and reading the response body.
+    timeout = 30s
+
+    # in case when pipeline can post to multiple indexes, we want to avoid posibility of blocking
+    # all pipelines, because just some events have incorrect index
+    dedicatedClientPerIndex = true
+    # in case if some indexes aren't used anymore, how often to destroy the dedicated client
+    dedicatedClientCleanPeriod = 24h
+    # possible values: RedirectToDefault, Drop, Retry
+    incorrectIndexBehavior = RedirectToDefault
+
+  002-daemonset.conf: |
+    # DaemonSet configuration is used for Nodes and Masters.
+
+    # Connection to the docker host
+    [general.docker]
+
+    # url for docker API, only unix socket is supported
+    url = unix:///rootfs/var/run/docker.sock
+
+    # path to docker root folder (can fallback to use folder structure to read docker metadata)
+    dockerRootFolder = /rootfs/var/lib/docker/
+
+    # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
+    # metadataFetchRetry = 5s
+
+    # (obsolete) In case if event is recent, how long pipeline should wait for the metadata to be available in Kubernetes API
+    # metadataFetchWait = 30s
+
+    # (obsolete) In case if collector does not see new events for specific container and with the last metadata refresh
+    # We have not found this container - fow how long we should keep this metadata in cache.
+    # metadataTTL = 5s
+
+    # Timeout for http responses to docker client. The streaming requests depend on this timeout.
+    timeout = 1m
+
+    # in case of Kubernetes/OpenShift if you schedule some containers with Docker, but not with the Kubernetes
+    # that allows us to find them (by default finding all containers with name not starting with k8s_)
+    containersNameFilter = ^(([^k])|(k[^8])|(k8[^s])|(k8s[^_])).*$
+
+    # regex to find docker container cgroups (helps excluding other cgroups with matched ID)
+    containersCgroupFilter = ^(/([^/\s]+/)*(docker-|docker/)[0-9a-f]{64}(\.scope)?)$
+
+
+    # cgroup input
+    [input.system_stats]
+
+    # disable system level stats
+    disabled = false
+
+    # cgroups fs location
+    pathCgroups = /rootfs/sys/fs/cgroup
+
+    # proc location
+    pathProc = /rootfs/proc
+
+    # how often to collect cgroup stats
+    statsInterval = 30s
+
+    # override type
+    type = kubernetes_stats
+
+    # specify Splunk index
+    index =
+
+
+    # proc input
+    [input.proc_stats]
+
+    # disable proc level stats
+    disabled = false
+
+    # proc location
+    pathProc = /rootfs/proc
+
+    # how often to collect proc stats
+    statsInterval = 30s
+
+    # override type
+    type = kubernetes_proc_stats
+
+    # specify Splunk index
+    index =
+
+
+    # Container Log files
+    [input.files]
+
+    # disable container logs monitoring
+    disabled = false
+
+    # root location of docker log files
+    # logs are expected in standard docker format like {containerID}/{containerID}-json.log
+    # rotated files
+    path = /rootfs/var/lib/docker/containers/
+    # root location of CRI-O files
+    # logs are expected in Kubernetes format, like {podID}/{containerName}/0.log
+    crioPath = /rootfs/var/log/pods/
+
+    # (obsolete) glob matching pattern for log files
+    # glob = */*-json.log*
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often to look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    # override type
+    type = kubernetes_logs
+
+    # specify Splunk index
+    index =
+
+    # docker splits events when they are larger than 10-100k (depends on the docker version)
+    # we join them together by default and forward to Splunk as one event
+    joinPartialEvents = true
+
+    # In case if your containers report messages with terminal colors or other escape sequences
+    # you can enable strip for all the containers in one place.
+    # Better is to enable it only for required container with the label collectord.io/strip-terminal-escape-sequences=true
+    stripTerminalEscapeSequences = false
+    # Regexp used for stripping terminal colors, it does not stip all the escape sequences
+    # Read http://man7.org/linux/man-pages/man4/console_codes.4.html for more information
+    stripTerminalEscapeSequencesRegex = (\x1b\[\d{1,3}(;\d{1,3})*m)|(\x07)|(\x1b]\d+(\s\d)?;[^\x07]+\x07)|(.*\x1b\[K)
+
+
+    # Application Logs
+    [input.app_logs]
+
+    # disable container application logs monitoring
+    disabled = false
+
+    # root location of mounts (applies to hostPath mounts only), if differs from host
+    root = /rootfs/
+
+    # how often to review list of available volumes
+    syncInterval = 5s
+
+    # glob matching pattern for log files
+    glob = *.log*
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often to look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    # override type
+    type = kubernetes_logs
+
+    # specify Splunk index
+    index =
+
+    # we split files using new line character, with this configuration you can specify what defines the new event
+    # after new line
+    eventPatternRegex = ^[^\s]
+    # Maximum interval of messages in pipeline
+    eventPatternMaxInterval = 100ms
+    # Maximum time to wait for the messages in pipeline
+    eventPatternMaxWait = 1s
+    # Maximum message size
+    eventPatternMaxSize = 100kb
+
+
+    # Host logs. Input syslog(.\d+)? files
+    [input.files::syslog]
+
+    # disable host level logs
+    disabled = false
+
+    # root location of docker files
+    path = /rootfs/var/log/
+
+    # regex matching pattern
+    match = ^(syslog|messages)(.\d+)?$
+
+    # limit search only on one level
+    recursive = false
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    # override type
+    type = kubernetes_host_logs
+
+    # specify Splunk index
+    index =
+
+    # field extraction
+    extraction = ^(?P<timestamp>[A-Za-z]+\s+\d+\s\d+:\d+:\d+)\s(?P<syslog_hostname>[^\s]+)\s(?P<syslog_component>[^:\[]+)(\[(?P<syslog_pid>\d+)\])?: (.+)$
+
+    # timestamp field
+    timestampField = timestamp
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat = Jan 2 15:04:05
+
+    # Adjust date, if month/day aren't set in format
+    timestampSetMonth = false
+    timestampSetDay = false
+
+    # timestamp location (if not defined by format)
+    timestampLocation = Local
+
+
+    # Host logs. Input all *.log(.\d+)? files
+    [input.files::logs]
+
+    # disable host level logs
+    disabled = false
+
+    # root location of docker files
+    path = /rootfs/var/log/
+
+    # regex matching pattern
+    match = ^[\w]+\.log(.\d+)?$
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    # override type
+    type = kubernetes_host_logs
+
+    # specify Splunk index
+    index =
+
+    # field extraction
+    extraction =
+
+    # timestamp field
+    timestampField =
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat =
+
+    # timestamp location (if not defined by format)
+    timestampLocation =
+
+
+    # Pipe to join events (container logs only)
+    [pipe.join]
+
+    # disable joining event
+    disabled = false
+
+    # Maximum interval of messages in pipeline
+    maxInterval = 100ms
+
+    # Maximum time to wait for the messages in pipeline
+    maxWait = 1s
+
+    # Maximum message size
+    maxSize = 100K
+
+    # Default pattern to indicate new message (should start not from space)
+    patternRegex = ^[^\s]
+
+
+    # Kube API Server has trace messages with multi line events
+    [pipe.join::kube-apiserver]
+    disabled = false
+    matchRegex.kubernetes_container_image = ^gcr.io/google_containers/kube-apiserver-.*$
+    matchRegex.docker_stream = stderr
+    patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
+
+
+    # (depricated, use annotations for settings up join rules)
+    # Define special event join patterns for matched events
+    # Section consist of [pipe.join::<name>]
+    # [pipe.join::my_app]
+    ## Set match pattern for the fields
+    #; matchRegex.docker_container_image = my_app
+    #; matchRegex.docker_stream = stdout
+    ## All events start from '[<digits>'
+    #; patternRegex = ^\[\d+
+
+
+    [input.prometheus::kubelet]
+
+    # disable prometheus kubelet metrics
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # override host (environment variables are supported, by default Kubernetes node name is used)
+    host = ${KUBERNETES_NODENAME}
+
+    # override source
+    source = kubelet
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # Prometheus endpoint, multiple values can be specified, collector tries them in order till finding the first
+    # working endpoint.
+    # At first trying to get it through proxy
+    endpoint.1proxy = https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/api/v1/nodes/${KUBERNETES_NODENAME}/proxy/metrics
+    # In case if cannot get it through proxy, trying localhost
+    endpoint.2http = http://127.0.0.1:10255/metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    # client certificate for authentication
+    clientCertPath =
+
+    # Allow invalid SSL server certificate
+    insecure = true
+
+    # include metrics help with the events
+    includeHelp = false
+
+
+  003-daemonset-master.conf: |
+    [input.prometheus::kubernetes-api]
+
+    # disable prometheus kubernetes-api metrics
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # override host (environment variables are supported, by default Kubernetes node name is used)
+    host = ${KUBERNETES_NODENAME}
+
+    # override source
+    source = kubernetes-api
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # prometheus endpoint
+    # at first trying to get it from localhost (avoiding load balancer, if multiple api servers)
+    endpoint.1localhost = https://127.0.0.1:6443/metrics
+    # as fallback using proxy
+    endpoint.2kubeapi = https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    # client certificate for authentication
+    clientCertPath =
+
+    # Allow invalid SSL server certificate
+    insecure = true
+
+    # include metrics help with the events
+    includeHelp = false
+
+
+    # This configuration works if scheduled is bind to the localhost:10251
+    [input.prometheus::scheduler]
+
+    # disable prometheus scheduler metrics
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # override host
+    host = ${KUBERNETES_NODENAME}
+
+    # override source
+    source = scheduler
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # prometheus endpoint
+    endpoint = http://127.0.0.1:10251/metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath =
+
+    # server certificate for certificate validation
+    certPath =
+
+    # client certificate for authentication
+    clientCertPath =
+
+    # Allow invalid SSL server certificate
+    insecure = true
+
+    # include metrics help with the events
+    includeHelp = false
+
+
+    # This configuration works if controller-manager is bind to the localhost:10252
+    [input.prometheus::controller-manager]
+
+    # disable prometheus controller-manager metrics
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # override host
+    host = ${KUBERNETES_NODENAME}
+
+    # override source
+    source = controller-manager
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # prometheus endpoint
+    endpoint = http://127.0.0.1:10252/metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath =
+
+    # server certificate for certificate validation
+    certPath =
+
+    # client certificate for authentication
+    clientCertPath =
+
+    # Allow invalid SSL server certificate
+    insecure = false
+
+    # include metrics help with the events
+    includeHelp = false
+
+
+    [input.prometheus::etcd]
+
+    # disable prometheus etcd metrics
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # override host
+    host = ${KUBERNETES_NODENAME}
+
+    # override source
+    source = etcd
+
+    # how often to collect prometheus metricd
+    interval = 36s
+
+    # prometheus endpoint
+    endpoint.http = http://:2379/metrics
+    endpoint.https = https://:2379/metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath =
+
+    # server certificate for certificate validation
+    certPath = /rootfs/etc/kubernetes/pki/etcd/ca.crt
+
+    # client certificate for authentication
+    clientCertPath = /rootfs/etc/kubernetes/pki/apiserver-etcd-client.crt
+    clientKeyPath = /rootfs/etc/kubernetes/pki/apiserver-etcd-client.key
+
+    # Allow invalid SSL server certificate
+    insecure = true
+
+    # include metrics help with the events
+    includeHelp = false
+
+
+  004-addon.conf: |
+    [general]
+
+    # addons can be run in parallel with agents
+    addon = true
+
+    [input.kubernetes_events]
+
+    # disable host level logs
+    disabled = false
+
+    # override type
+    type = kubernetes_events
+
+    # specify Splunk index
+    index =
+
+    # (obsolete, depends on kubernetes timeout)
+    # Set the timeout for how long request to watch events going to hang reading.
+    # eventsWatchTimeout = 30m
+
+    # (obsolete, depends on kubernetes timeout)
+    # Ignore events last seen later that this duration.
+    # eventsTTL = 12h
+
+    ; # Example on how to get scheduler metrics with endpoint discovery
+    ; [input.prometheus::scheduler]
+    ; # disable prometheus scheduler
+    ; disabled = false
+    ; # override type
+    ; type = kubernetes_prometheus
+    ; # specify Splunk index
+    ; index =
+    ; # override host (using discovery from endpoint)
+    ; host =
+    ; # override source
+    ; source = scheduler
+    ; # how often to collect prometheus metrics
+    ; interval = 60s
+    ; # prometheus endpoint
+    ; endpoint = endpoint-http://kube-scheduler-collectorforkubernetes-discovery:10251/metrics
+    ; # token for "Authorization: Bearer $(cat tokenPath)"
+    ; tokenPath =
+    ; # server certificate for certificate validation
+    ; certPath =
+    ; # client certificate for authentication
+    ; clientCertPath =
+    ; # Allow invalid SSL server certificate
+    ; insecure = false
+    ; # include metrics help with the events
+    ; includeHelp = true
+
+    ; # Example on how to get controller-manager metrics with endpoint discovery
+    ; [input.prometheus::controller-manager]
+    ; # disable prometheus controller-manager
+    ; disabled = false
+    ; # override type
+    ; type = kubernetes_prometheus
+    ; # specify Splunk index
+    ; index =
+    ; # override host (using discovery from endpoint)
+    ; host =
+    ; # override source
+    ; source = controller-manager
+    ; # how often to collect prometheus metrics
+    ; interval = 60s
+    ; # prometheus endpoint
+    ; endpoint = endpoint-http://kube-controller-manager-collectorforkubernetes-discovery:10252/metrics
+    ; # token for "Authorization: Bearer $(cat tokenPath)"
+    ; tokenPath =
+    ; # server certificate for certificate validation
+    ; certPath =
+    ; # client certificate for authentication
+    ; clientCertPath =
+    ; # Allow invalid SSL server certificate
+    ; insecure = false
+    ; # include metrics help with the events
+    ; includeHelp = true
+
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
+  labels:
+    app: collectorforkubernetes
+spec:
+  # Default updateStrategy is OnDelete. For collector RollingUpdate is suitable
+  # When you update configuration
+  updateStrategy:
+    type: RollingUpdate
+
+  template:
+    metadata:
+      name: collectorforkubernetes
+      labels:
+        daemon: collectorforkubernetes
+    spec:
+      hostNetwork: true
+      serviceAccountName: collectorforkubernetes
+      # We run this DaemonSet only for Non-Masters
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/master
+                operator: DoesNotExist
+      tolerations:
+      - operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: collectorforkubernetes
+        # Collector version
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.0
+        imagePullPolicy: Always
+        securityContext:
+          runAsUser: 0
+          privileged: true
+        # Define your resources if you need. Defaults should be fine for most.
+        # You can lower or increase based on your hosts.
+        resources:
+          limits:
+            cpu: 2
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 192Mi
+        env:
+        - name: KUBERNETES_NODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        # We store state in /data folder (file positions)
+        - name: collectorforkubernetes-state
+          mountPath: /data
+        # Configuration file deployed with ConfigMap
+        - name: collectorforkubernetes-config
+          mountPath: /config/
+          readOnly: true
+        # Cgroup filesystem to get metrics
+        - name: cgroup
+          mountPath: /rootfs/sys/fs/cgroup
+          readOnly: true
+        # Proc filesystem to get metrics
+        - name: proc
+          mountPath: /rootfs/proc
+          readOnly: true
+        # Docker logs (JSON files)
+        - name: docker-logs
+          mountPath: /rootfs/var/lib/docker/
+          readOnly: true
+        # Docker socket
+        - name: docker-unix-socket
+          mountPath: /rootfs/var/run/docker.sock
+          readOnly: true
+        # Host logs
+        - name: logs
+          mountPath: /rootfs/var/log/
+          readOnly: true
+        # Application logs
+        - name: volumes-root
+          mountPath: /rootfs/var/lib/kubelet/
+          readOnly: true
+      volumes:
+      # We store state directly on host, change this location, if
+      # your persistent volume is somewhere else
+      - name: collectorforkubernetes-state
+        hostPath:
+          path: /var/lib/collectorforkubernetes/data/
+      # Location of docker root (for container logs and metadata)
+      - name: docker-logs
+        hostPath:
+          path: /var/lib/docker/
+      # Location of cgroups file system
+      - name: cgroup
+        hostPath:
+          path: /sys/fs/cgroup
+      # Location of proc file system
+      - name: proc
+        hostPath:
+          path: /proc
+      # Host logs location (also includes CRI-O logs)
+      - name: logs
+        hostPath:
+          path: /var/log
+      # Docker socket
+      - name: docker-unix-socket
+        hostPath:
+          path: /var/run/docker.sock
+      # Location for kubelet mounts, to autodiscover application logs
+      - name: volumes-root
+        hostPath:
+          path: /var/lib/kubelet/
+      # configuration from ConfigMap
+      - name: collectorforkubernetes-config
+        configMap:
+          name: collectorforkubernetes
+          items:
+          - key: 001-general.conf
+            path: 001-general.conf
+          - key: 002-daemonset.conf
+            path: 002-daemonset.conf
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: collectorforkubernetes-master
+  namespace: collectorforkubernetes
+  labels:
+    app: collectorforkubernetes
+spec:
+  updateStrategy:
+    type: RollingUpdate
+
+  template:
+    metadata:
+      name: collectorforkubernetes-master
+      labels:
+        daemon: collectorforkubernetes
+    spec:
+      hostNetwork: true
+      serviceAccountName: collectorforkubernetes
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/master
+                operator: Exists
+      tolerations:
+      - operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: collectorforkubernetes
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.0
+        imagePullPolicy: Always
+        securityContext:
+          runAsUser: 0
+          privileged: true
+        resources:
+          limits:
+            cpu: 2
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 192Mi
+        env:
+        - name: KUBERNETES_NODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: collectorforkubernetes-state
+          mountPath: /data
+        - name: collectorforkubernetes-config
+          mountPath: /config/
+          readOnly: true
+        - name: cgroup
+          mountPath: /rootfs/sys/fs/cgroup
+          readOnly: true
+        - name: proc
+          mountPath: /rootfs/proc
+          readOnly: true
+        - name: docker-logs
+          mountPath: /rootfs/var/lib/docker/
+          readOnly: true
+        - name: docker-unix-socket
+          mountPath: /rootfs/var/run/docker.sock
+          readOnly: true
+        - name: logs
+          mountPath: /rootfs/var/log/
+          readOnly: true
+        - name: k8s-certs
+          mountPath: /rootfs/etc/kubernetes/pki/
+          readOnly: true
+        - name: volumes-root
+          mountPath: /rootfs/var/lib/kubelet/
+          readOnly: true
+      volumes:
+      - name: collectorforkubernetes-state
+        hostPath:
+          path: /var/lib/collectorforkubernetes/data/
+      - name: docker-logs
+        hostPath:
+          path: /var/lib/docker/
+      - name: cgroup
+        hostPath:
+          path: /sys/fs/cgroup
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: logs
+        hostPath:
+          path: /var/log
+      - name: docker-unix-socket
+        hostPath:
+          path: /var/run/docker.sock
+      - name: k8s-certs
+        hostPath:
+          path: /etc/kubernetes/pki/
+      - name: volumes-root
+        hostPath:
+          path: /var/lib/kubelet/
+      - name: collectorforkubernetes-config
+        configMap:
+          name: collectorforkubernetes
+          items:
+          - key: 001-general.conf
+            path: 001-general.conf
+          - key: 002-daemonset.conf
+            path: 002-daemonset.conf
+          - key: 003-daemonset-master.conf
+            path: 003-daemonset-master.conf
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: collectorforkubernetes-addon
+  namespace: collectorforkubernetes
+  labels:
+    app: collectorforkubernetes
+spec:
+  replicas: 1
+
+  template:
+    metadata:
+      name: collectorforkubernetes-addon
+      labels:
+        daemon: collectorforkubernetes
+    spec:
+      serviceAccountName: collectorforkubernetes
+      containers:
+      - name: collectorforkubernetes
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.0
+        imagePullPolicy: Always
+        securityContext:
+          runAsUser: 0
+          privileged: true
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        env:
+        - name: KUBERNETES_NODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: collectorforkubernetes-state
+          mountPath: /data
+        - name: collectorforkubernetes-config
+          mountPath: /config/
+          readOnly: true
+      volumes:
+      - name: collectorforkubernetes-state
+        hostPath:
+          path: /var/lib/collectorforkubernetes/data/
+      - name: collectorforkubernetes-config
+        configMap:
+          name: collectorforkubernetes
+          items:
+          - key: 001-general.conf
+            path: 001-general.conf
+          - key: 004-addon.conf
+            path: 004-addon.conf
