@@ -13,6 +13,7 @@ metadata:
   name: collectorforkubernetes
   namespace: collectorforkubernetes
 
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -21,6 +22,11 @@ metadata:
     app: collectorforkubernetes
   name: collectorforkubernetes
 rules:
+- apiGroups: ['extensions']
+  resources: ['podsecuritypolicies']
+  verbs:     ['use']
+  resourceNames:
+  - privileged
 - apiGroups:
   - ""
   - apps
@@ -679,6 +685,37 @@ data:
     output =
 
 
+    [input.journald]
+
+    # disable host level logs
+    disabled = false
+
+    # root location of log files
+    path = /rootfs/var/log/journal/
+
+    # when reach end of journald, how often to pull
+    pollingInterval = 250ms
+
+    # if you don't want to forward journald from the beginning,
+    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
+    startFromRel =
+
+    # override type
+    type = kubernetes_host_logs
+
+    # specify Splunk index
+    index =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+
     # Pipe to join events (container logs only)
     [pipe.join]
 
@@ -990,7 +1027,12 @@ spec:
       name: collectorforkubernetes
       labels:
         daemon: collectorforkubernetes
+      
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+      
     spec:
+      
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforkubernetes
@@ -1010,7 +1052,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.6.213
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.7.220
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1141,7 +1183,12 @@ spec:
       name: collectorforkubernetes-master
       labels:
         daemon: collectorforkubernetes
+      
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+      
     spec:
+      
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforkubernetes
@@ -1159,7 +1206,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.6.213
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.7.220
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1274,11 +1321,16 @@ spec:
       name: collectorforkubernetes-addon
       labels:
         daemon: collectorforkubernetes
+      
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+      
     spec:
+      
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.6.213
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.7.220
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

@@ -8,6 +8,7 @@ metadata:
     openshift.io/node-selector: ''
     openshift.io/description: 'Monitoring OpenShift in Splunk, built by Outcold Solutions'
     openshift.io/display-name: 'Collector for OpenShift'
+
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -681,6 +682,37 @@ data:
     output =
 
 
+    [input.journald]
+
+    # disable host level logs
+    disabled = false
+
+    # root location of log files
+    path = /rootfs/var/log/journal/
+
+    # when reach end of journald, how often to pull
+    pollingInterval = 250ms
+
+    # if you don't want to forward journald from the beginning,
+    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
+    startFromRel =
+
+    # override type
+    type = kubernetes_host_logs
+
+    # specify Splunk index
+    index =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+
     # Pipe to join events (container logs only)
     [pipe.join]
 
@@ -1018,7 +1050,12 @@ spec:
       name: collectorforopenshift
       labels:
         daemon: collectorforopenshift
+      
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+      
     spec:
+      
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforopenshift
@@ -1038,7 +1075,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.6.213
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.7.220
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1167,7 +1204,12 @@ spec:
       name: collectorforopenshift-master
       labels:
         daemon: collectorforopenshift
+      
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+      
     spec:
+      
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforopenshift
@@ -1186,7 +1228,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.6.213
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.7.220
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1298,11 +1340,16 @@ spec:
       name: collectorforopenshift-addon
       labels:
         daemon: collectorforopenshift
+      
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+      
     spec:
+      
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.6.213
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.7.220
         securityContext:
           privileged: true
           runAsUser: 0

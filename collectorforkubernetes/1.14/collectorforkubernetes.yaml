@@ -13,6 +13,13 @@ metadata:
   name: collectorforkubernetes
   namespace: collectorforkubernetes
 
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: collectorforkubernetes-critical
+value: 1000000000
+
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1005,7 +1012,7 @@ data:
     output =
 
 ---
-apiVersion: apps/v1beta2
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: collectorforkubernetes
@@ -1028,10 +1035,9 @@ spec:
       labels:
         daemon: collectorforkubernetes
       
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
-      
     spec:
+      
+      priorityClassName: collectorforkubernetes-critical
       
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
@@ -1163,7 +1169,7 @@ spec:
           - key: 002-daemonset.conf
             path: 002-daemonset.conf
 ---
-apiVersion: apps/v1beta2
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: collectorforkubernetes-master
@@ -1184,10 +1190,9 @@ spec:
       labels:
         daemon: collectorforkubernetes
       
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
-      
     spec:
+      
+      priorityClassName: collectorforkubernetes-critical
       
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
@@ -1302,7 +1307,7 @@ spec:
           - key: 003-daemonset-master.conf
             path: 003-daemonset-master.conf
 ---
-apiVersion: apps/v1beta2
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: collectorforkubernetes-addon
@@ -1322,10 +1327,9 @@ spec:
       labels:
         daemon: collectorforkubernetes
       
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
-      
     spec:
+      
+      priorityClassName: collectorforkubernetes-critical
       
       serviceAccountName: collectorforkubernetes
       containers:
