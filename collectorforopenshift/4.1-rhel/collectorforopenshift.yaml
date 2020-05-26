@@ -108,6 +108,7 @@ rules:
   - syndesises
   - persistentvolumeclaims
   - configurations
+  - dns
   verbs:
   - get
   - list
@@ -238,6 +239,9 @@ data:
     # connection to kubernetes api
     [general.kubernetes]
 
+    # Override service URL for Kubernetes (default is ${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT})
+    serviceURL =
+
     # Environment variable $KUBERNETES_NODENAME is used by default to setup nodeName
     # Use it only when you need to override it
     nodeName =
@@ -281,7 +285,7 @@ data:
     # watch for changes (annotations) in the objects
     watch.namespaces = v1/namespace
     watch.deploymentconfigs = apis/v1/apps.openshift.io/deploymentconfig
-    watch.configurations = apis/v1/collectord.io/configuration
+    watch.configurations =  collectord.io/v1/configuration
 
 
     # watch for pods annotations, setup prometheus collection
@@ -405,6 +409,9 @@ data:
     # number of dedicated splunk output threads (to increase throughput above 4k events per second)
     threads = 1
 
+    # if you want to exclude some preindexed fields from events
+    # excludeFields.openshift_pod_ip = true
+
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
 
@@ -522,10 +529,12 @@ data:
     type = openshift_net_stats_v2
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
 
     # network socket table
@@ -544,10 +553,12 @@ data:
     type = openshift_net_socket_table
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
     # group connections by tcp_state, localAddr, remoteAddr (if localPort is not the port it is listening on)
     # that can significally reduces the amount of events
@@ -1097,7 +1108,9 @@ data:
     output =
 
 ---
-apiVersion: extensions/v1beta1
+
+apiVersion: apps/v1
+
 kind: DaemonSet
 metadata:
   name: collectorforopenshift
@@ -1143,7 +1156,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.12.273-ubi8
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.14.284-ubi8
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1264,7 +1277,9 @@ spec:
           - key: 002-daemonset.conf
             path: 002-daemonset.conf
 ---
-apiVersion: extensions/v1beta1
+
+apiVersion: apps/v1
+
 kind: DaemonSet
 metadata:
   name: collectorforopenshift-master
@@ -1307,7 +1322,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.12.273-ubi8
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.14.284-ubi8
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1414,7 +1429,9 @@ spec:
           - key: 003-daemonset-master.conf
             path: 003-daemonset-master.conf
 ---
-apiVersion: apps/v1beta1
+
+apiVersion: apps/v1
+
 kind: Deployment
 metadata:
   name: collectorforopenshift-addon
@@ -1439,7 +1456,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.12.273-ubi8
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.14.284-ubi8
         securityContext:
           privileged: true
           runAsUser: 0

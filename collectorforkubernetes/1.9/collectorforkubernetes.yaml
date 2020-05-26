@@ -219,6 +219,9 @@ data:
     # connection to kubernetes api
     [general.kubernetes]
 
+    # Override service URL for Kubernetes (default is ${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT})
+    serviceURL =
+
     # Environment variable $KUBERNETES_NODENAME is used by default to setup nodeName
     # Use it only when you need to override it
     nodeName =
@@ -261,7 +264,7 @@ data:
     # watch for changes (annotations) in the objects
     watch.namespaces = v1/namespace
     watch.deployments = apis/v1/deployment
-    watch.configurations = apis/v1/collectord.io/configuration
+    watch.configurations =  collectord.io/v1/configuration
 
 
     # watch for pods annotations, setup prometheus collection
@@ -385,6 +388,9 @@ data:
     # number of dedicated splunk output threads (to increase throughput above 4k events per second)
     threads = 1
 
+    # if you want to exclude some preindexed fields from events
+    # excludeFields.kubernetes_pod_ip = true
+
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
 
@@ -426,6 +432,12 @@ data:
 
     # Timeout for http responses to docker client. The streaming requests depend on this timeout.
     timeout = 1m
+
+
+    [general.containerd]
+
+    runtimePath = /rootfs/var/run/containerd
+    namespace = k8s.io
 
 
     # cgroup input
@@ -502,10 +514,12 @@ data:
     type = kubernetes_net_stats_v2
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
 
     # network socket table
@@ -524,10 +538,12 @@ data:
     type = kubernetes_net_socket_table
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
     # group connections by tcp_state, localAddr, remoteAddr (if localPort is not the port it is listening on)
     # that can significally reduces the amount of events
@@ -1211,7 +1227,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.12.273
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.14.284
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1263,6 +1279,10 @@ spec:
         - name: crio-unix-socket
           mountPath: /rootfs/var/run/crio/
           readOnly: true
+        # Containerd socket (if using containerd runtime)
+        - name: containerd-unix-socket
+          mountPath: /rootfs/var/run/containerd/
+          readOnly: true
         # Host logs location (including CRI-O logs)
         - name: logs
           mountPath: /rootfs/var/log/
@@ -1312,6 +1332,10 @@ spec:
       - name: crio-unix-socket
         hostPath:
           path: /var/run/crio/
+      # containerd socket (if using containerd runtime)
+      - name: containerd-unix-socket
+        hostPath:
+          path: /var/run/containerd/
       # Location for kubelet mounts, to autodiscover application logs
       - name: volumes-root
         hostPath:
@@ -1373,7 +1397,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.12.273
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.14.284
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1416,6 +1440,9 @@ spec:
         - name: crio-unix-socket
           mountPath: /rootfs/var/run/crio/
           readOnly: true
+        - name: containerd-unix-socket
+          mountPath: /rootfs/var/run/containerd/
+          readOnly: true
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
@@ -1457,6 +1484,9 @@ spec:
       - name: crio-unix-socket
         hostPath:
           path: /var/run/crio/
+      - name: containerd-unix-socket
+        hostPath:
+          path: /var/run/containerd/
       - name: k8s-certs
         hostPath:
           path: /etc/kubernetes/pki/
@@ -1505,7 +1535,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.12.273
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.14.284
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
