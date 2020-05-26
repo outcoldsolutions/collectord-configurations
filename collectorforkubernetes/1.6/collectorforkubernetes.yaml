@@ -68,6 +68,7 @@ rules:
   - oneagents
   - natsclusters
   - syndesises
+  - persistentvolumeclaims
   verbs:
   - get
   - list
@@ -76,6 +77,8 @@ rules:
   - /metrics
   verbs:
   - get
+  apiGroups: []
+  resources: []
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
@@ -312,7 +315,7 @@ data:
     frequency = 5s
     batchSize = 768K
     # limit by the number of events (0 value has no limit on the number of events)
-    events = 0
+    events = 50
 
     # Splunk through proxy
     proxyUrl =
@@ -1169,7 +1172,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.10.253
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.11.261
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1212,6 +1215,7 @@ spec:
         - name: docker-root
           mountPath: /rootfs/var/lib/docker/
           readOnly: true
+          mountPropagation: HostToContainer
         # Docker socket
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
@@ -1224,13 +1228,16 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
+          mountPropagation: HostToContainer
         # Application logs
         - name: volumes-root
           mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
+          mountPropagation: HostToContainer
         # correct timezone
         - name: localtime
           mountPath: /etc/localtime
@@ -1325,7 +1332,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.10.253
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.11.261
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1361,6 +1368,7 @@ spec:
         - name: docker-logs
           mountPath: /rootfs/var/lib/docker/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
           readOnly: true
@@ -1370,15 +1378,18 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: k8s-certs
           mountPath: /rootfs/etc/kubernetes/pki/
           readOnly: true
         - name: kubelet-root
           mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: localtime
           mountPath: /etc/localtime
           readOnly: true
@@ -1451,7 +1462,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.10.253
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.11.261
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

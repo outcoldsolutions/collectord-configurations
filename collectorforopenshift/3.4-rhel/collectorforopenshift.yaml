@@ -82,6 +82,7 @@ rules:
   - templateinstances
   - natsclusters
   - syndesises
+  - persistentvolumeclaims
   verbs:
   - get
   - list
@@ -90,6 +91,8 @@ rules:
   - /metrics
   verbs:
   - get
+  apiGroups: []
+  resources: []
 ---
 apiVersion: v1
 kind: ClusterRoleBinding
@@ -325,7 +328,7 @@ data:
     frequency = 5s
     batchSize = 768K
     # limit by the number of events (0 value has no limit on the number of events)
-    events = 0
+    events = 50
 
     # Splunk through proxy
     proxyUrl =
@@ -1229,7 +1232,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.10.253
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.11.263
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1270,6 +1273,7 @@ spec:
         - name: docker-root
           mountPath: /rootfs/var/lib/docker/
           readOnly: true
+          mountPropagation: HostToContainer
         # Docker socket
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
@@ -1282,14 +1286,17 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
+          mountPropagation: HostToContainer
         # Application logs
 
         - name: volumes-root
           mountPath: /rootfs/var/lib/origin/openshift.local.volumes/
           readOnly: true
+          mountPropagation: HostToContainer
 
         # correct timezone
         - name: localtime
@@ -1392,7 +1399,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.10.253
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.11.263
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1427,6 +1434,7 @@ spec:
         - name: docker-logs
           mountPath: /rootfs/var/lib/docker/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
           readOnly: true
@@ -1436,9 +1444,11 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
+          mountPropagation: HostToContainer
 
         - name: origin-certs
           mountPath: /rootfs/etc/origin/master/
@@ -1446,6 +1456,7 @@ spec:
         - name: volumes-root
           mountPath: /rootfs/var/lib/origin/
           readOnly: true
+          mountPropagation: HostToContainer
 
         - name: localtime
           mountPath: /etc/localtime
@@ -1523,7 +1534,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.10.253
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.11.263
         securityContext:
           privileged: true
           runAsUser: 0
