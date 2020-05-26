@@ -191,6 +191,13 @@ data:
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
     volumesRootDir = /rootfs/var/lib/origin/openshift.local.volumes/
 
+    # You can attach annotations as a metadata, using the format
+    #   includeAnnotations.{key} = {regexp}
+    # For example if you want to include all annotations that starts with `prometheus.io` or `example.com` you can include
+    # the following format:
+    #   includeAnnotations.1 = ^prometheus\.io.*
+    #   includeAnnotations.2 = ^example\.com.*
+
 
     # watch for pods annotations, setup prometheus collection
     # for these pods
@@ -265,6 +272,8 @@ data:
     # than set by frequency
     frequency = 5s
     batchSize = 768K
+    # limit by the number of events (0 value has no limit on the number of events)
+    events = 0
 
     # Splunk through proxy
     proxyUrl =
@@ -612,6 +621,12 @@ data:
     # timestamp location (if not defined by format)
     timestampLocation = Local
 
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
@@ -655,6 +670,12 @@ data:
 
     # timestamp location (if not defined by format)
     timestampLocation =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
@@ -1017,7 +1038,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.5.203
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.6.213
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1165,7 +1186,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.5.203
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.6.213
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1281,7 +1302,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.5.203
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.6.213
         securityContext:
           privileged: true
           runAsUser: 0
