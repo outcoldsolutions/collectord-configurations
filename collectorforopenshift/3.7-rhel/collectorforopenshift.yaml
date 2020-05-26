@@ -33,6 +33,7 @@ rules:
   - apps.openshift.io
   - build.openshift.io
   resources:
+  - alertmanagers
   - buildconfigs
   - builds
   - cronjobs
@@ -161,7 +162,7 @@ data:
     certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
     # Default timeout for http responses. The streaming/watch requests depend on this timeout.
-    timeout = 5m
+    timeout = 30m
 
     # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
     # metadataFetchRetry = 5s
@@ -437,6 +438,10 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # group connections by tcp_state, localAddr, remoteAddr (if localPort is not the port it is listening on)
+    # that can significally reduces the amount of events
+    group = true
+
 
     # mount input (collects mount stats where kubelet runtime is stored)
     [input.mount_stats]
@@ -606,11 +611,11 @@ data:
     # disable host level logs
     disabled = false
 
-    # root location of docker files
+    # root location of log files
     path = /rootfs/var/log/
 
     # regex matching pattern
-    match = ^[\w\-\.]+\.log(.\d+)?$
+    match = ^(([\w\-.]+\.log(.[\d\-]+)?)|(docker))$
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
@@ -667,37 +672,37 @@ data:
     [pipe.join::ose-service-catalog-stderr]
     ; disabled = false
     matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-service-catalog:.*$
-    matchRegex.docker_stream = stderr
+    matchRegex.stream = stderr
     patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
 
     [pipe.join::ose-docker-registry-stderr]
     ; disabled = false
     matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-docker-registry:.*$
-    matchRegex.docker_stream = stderr
+    matchRegex.stream = stderr
     patternRegex = ^time="[^"]+"\s+level=[^\s]+\s+msg=
 
     [pipe.join::ose-docker-registry-stdout]
     ; disabled = false
     matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-docker-registry:.*$
-    matchRegex.docker_stream = stdout
+    matchRegex.stream = stdout
     patternRegex = ^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+-
 
     [pipe.join::ose-stderr]
     ; disabled = false
     matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose:.*$
-    matchRegex.docker_stream = stderr
+    matchRegex.stream = stderr
     patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
 
     [pipe.join::ose-stdout]
     ; disabled = false
     matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose:.*$
-    matchRegex.docker_stream = stdout
+    matchRegex.stream = stdout
     patternRegex = ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z\s+
 
     [pipe.join::ose-haproxy-router-stderr]
     ; disabled = false
     matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-haproxy-router:.*$
-    matchRegex.docker_stream = stderr
+    matchRegex.stream = stderr
     patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
 
     # (depricated, use annotations for settings up join rules)
@@ -706,7 +711,7 @@ data:
     # [pipe.join::my_app]
     ## Set match pattern for the fields
     #; matchRegex.docker_container_image = my_app
-    #; matchRegex.docker_stream = stdout
+    #; matchRegex.stream = stdout
     ## All events start from '[<digits>'
     #; patternRegex = ^\[\d+
 
@@ -996,10 +1001,12 @@ spec:
       tolerations:
       - operator: "Exists"
         effect: "NoSchedule"
+      - operator: "Exists"
+        effect: "NoExecute"
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.2
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.3
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1143,9 +1150,11 @@ spec:
       tolerations:
       - operator: "Exists"
         effect: "NoSchedule"
+      - operator: "Exists"
+        effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.2
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.3
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1261,7 +1270,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.2
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.3
         securityContext:
           privileged: true
           runAsUser: 0

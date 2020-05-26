@@ -98,7 +98,7 @@ data:
     certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
     # Default timeout for http responses. The streaming/watch requests depend on this timeout.
-    timeout = 5m
+    timeout = 30m
 
     # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
     # metadataFetchRetry = 5s
@@ -374,6 +374,10 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # group connections by tcp_state, localAddr, remoteAddr (if localPort is not the port it is listening on)
+    # that can significally reduces the amount of events
+    group = true
+
 
     # mount input (collects mount stats where kubelet runtime is stored)
     [input.mount_stats]
@@ -543,11 +547,11 @@ data:
     # disable host level logs
     disabled = false
 
-    # root location of docker files
+    # root location of log files
     path = /rootfs/var/log/
 
     # regex matching pattern
-    match = ^[\w\-\.]+\.log(.\d+)?$
+    match = ^(([\w\-.]+\.log(.[\d\-]+)?)|(docker))$
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
@@ -604,7 +608,7 @@ data:
     [pipe.join::kube-apiserver]
     disabled = false
     matchRegex.kubernetes_container_image = ^gcr.io/google_containers/kube-apiserver-.*$
-    matchRegex.docker_stream = stderr
+    matchRegex.stream = stderr
     patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
 
 
@@ -614,7 +618,7 @@ data:
     # [pipe.join::my_app]
     ## Set match pattern for the fields
     #; matchRegex.docker_container_image = my_app
-    #; matchRegex.docker_stream = stdout
+    #; matchRegex.stream = stdout
     ## All events start from '[<digits>'
     #; patternRegex = ^\[\d+
 
@@ -903,10 +907,12 @@ spec:
       tolerations:
       - operator: "Exists"
         effect: "NoSchedule"
+      - operator: "Exists"
+        effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.2
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.3
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1047,9 +1053,11 @@ spec:
       tolerations:
       - operator: "Exists"
         effect: "NoSchedule"
+      - operator: "Exists"
+        effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.2
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.3
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1164,7 +1172,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.2
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.3
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
