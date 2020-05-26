@@ -76,42 +76,6 @@ subjects:
 
 ---
 apiVersion: v1
-kind: Service
-metadata:
-  namespace: kube-system
-  name: kube-controller-manager-collectorforkubernetes-discovery
-  labels:
-    k8s-app: kube-controller-manager
-spec:
-  selector:
-    k8s-app: kube-controller-manager
-  type: ClusterIP
-  clusterIP: None
-  ports:
-  - name: http-metrics
-    port: 10252
-    targetPort: 10252
-    protocol: TCP
----
-apiVersion: v1
-kind: Service
-metadata:
-  namespace: kube-system
-  name: kube-scheduler-collectorforkubernetes-discovery
-  labels:
-    k8s-app: kube-scheduler
-spec:
-  selector:
-    k8s-app: kube-scheduler
-  type: ClusterIP
-  clusterIP: None
-  ports:
-  - name: http-metrics
-    port: 10251
-    targetPort: 10251
-    protocol: TCP
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: collectorforkubernetes
@@ -164,6 +128,11 @@ data:
     # Use value below to override specific name
     hostname =
 
+    # Default output for events, logs and metrics
+    # valid values: splunk and devnull
+    # Use devnull by default if you don't want to redirect data
+    defaultOutput = splunk
+
     # Default buffer size for file input
     fileInputBufferSize = 256b
 
@@ -210,6 +179,34 @@ data:
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
     volumesRootDir = /rootfs/var/lib/kubelet/
+
+
+    # watch for pods annotations, setup prometheus collection
+    # for these pods
+    # Addon listens on Pod Network
+    # DaemonSets listen on Host Network
+    [input.prometheus_auto]
+
+    # disable prometheus auto discovery for pods
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # include metrics help with the events
+    includeHelp = true
+
+    # http client timeout
+    timeout = 30s
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Splunk output
@@ -364,6 +361,9 @@ data:
     # specify Splunk index
     index =
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # proc input
     [input.proc_stats]
@@ -386,7 +386,10 @@ data:
     # proc filesystem includes by default system threads (there can be over 100 of them)
     # these stats do not help with the observability
     # excluding them can reduce the size of the index, performance of the searches and usage of the collector
-    IncludeSystemThreads = false
+    includeSystemThreads = false
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # network stats
@@ -407,6 +410,9 @@ data:
     # specify Splunk index
     index =
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # network socket table
     [input.net_socket_table]
@@ -425,6 +431,28 @@ data:
 
     # specify Splunk index
     index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+
+    # mount input (collects mount stats where kubelet runtime is stored)
+    [input.mount_stats]
+
+    # disable system level stats
+    disabled = false
+
+    # how often to collect mount stats
+    statsInterval = 30s
+
+    # override type
+    type = kubernetes_mount_stats
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Container Log files
@@ -471,6 +499,9 @@ data:
     # Read http://man7.org/linux/man-pages/man4/console_codes.4.html for more information
     stripTerminalEscapeSequencesRegex = (\x1b\[\d{1,3}(;\d{1,3})*m)|(\x07)|(\x1b]\d+(\s\d)?;[^\x07]+\x07)|(.*\x1b\[K)
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # Application Logs
     [input.app_logs]
@@ -511,6 +542,9 @@ data:
     eventPatternMaxWait = 1s
     # Maximum message size
     eventPatternMaxSize = 100kb
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Host logs. Input syslog(.\d+)? files
@@ -560,6 +594,9 @@ data:
     # timestamp location (if not defined by format)
     timestampLocation = Local
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # Host logs. Input all *.log(.\d+)? files
     [input.files::logs]
@@ -600,6 +637,9 @@ data:
 
     # timestamp location (if not defined by format)
     timestampLocation =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Pipe to join events (container logs only)
@@ -682,6 +722,9 @@ data:
     # include metrics help with the events
     includeHelp = false
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
   003-daemonset-master.conf: |
     [input.prometheus::kubernetes-api]
@@ -725,6 +768,9 @@ data:
     # include metrics help with the events
     includeHelp = false
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # This configuration works if scheduled is bind to the localhost:10251
     [input.prometheus::scheduler]
@@ -764,6 +810,9 @@ data:
 
     # include metrics help with the events
     includeHelp = false
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # This configuration works if controller-manager is bind to the localhost:10252
@@ -805,6 +854,9 @@ data:
     # include metrics help with the events
     includeHelp = false
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     [input.prometheus::etcd]
 
@@ -824,7 +876,7 @@ data:
     source = etcd
 
     # how often to collect prometheus metricd
-    interval = 36s
+    interval = 60s
 
     # prometheus endpoint
     endpoint.http = http://:2379/metrics
@@ -845,6 +897,9 @@ data:
 
     # include metrics help with the events
     includeHelp = false
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
   004-addon.conf: |
@@ -872,83 +927,8 @@ data:
     # Ignore events last seen later that this duration.
     # eventsTTL = 12h
 
-
-    # watch for pods annotations, setup prometheus collection
-    # for these pods
-    [input.prometheus_auto]
-
-    # disable prometheus auto discovery for pods
-    disabled = false
-
-    # override type
-    type = kubernetes_prometheus
-
-    # specify Splunk index
-    index =
-
-    # how often to collect prometheus metrics
-    interval = 60s
-
-    # include metrics help with the events
-    includeHelp = true
-
-    # http client timeout
-    timeout = 30s
-
-
-    ; # Example on how to get scheduler metrics with endpoint discovery
-    ; [input.prometheus::scheduler]
-    ; # disable prometheus scheduler
-    ; disabled = false
-    ; # override type
-    ; type = kubernetes_prometheus
-    ; # specify Splunk index
-    ; index =
-    ; # override host (using discovery from endpoint)
-    ; host =
-    ; # override source
-    ; source = scheduler
-    ; # how often to collect prometheus metrics
-    ; interval = 60s
-    ; # prometheus endpoint
-    ; endpoint = endpoint-http://kube-scheduler-collectorforkubernetes-discovery:10251/metrics
-    ; # token for "Authorization: Bearer $(cat tokenPath)"
-    ; tokenPath =
-    ; # server certificate for certificate validation
-    ; certPath =
-    ; # client certificate for authentication
-    ; clientCertPath =
-    ; # Allow invalid SSL server certificate
-    ; insecure = false
-    ; # include metrics help with the events
-    ; includeHelp = true
-
-    ; # Example on how to get controller-manager metrics with endpoint discovery
-    ; [input.prometheus::controller-manager]
-    ; # disable prometheus controller-manager
-    ; disabled = false
-    ; # override type
-    ; type = kubernetes_prometheus
-    ; # specify Splunk index
-    ; index =
-    ; # override host (using discovery from endpoint)
-    ; host =
-    ; # override source
-    ; source = controller-manager
-    ; # how often to collect prometheus metrics
-    ; interval = 60s
-    ; # prometheus endpoint
-    ; endpoint = endpoint-http://kube-controller-manager-collectorforkubernetes-discovery:10252/metrics
-    ; # token for "Authorization: Bearer $(cat tokenPath)"
-    ; tokenPath =
-    ; # server certificate for certificate validation
-    ; certPath =
-    ; # client certificate for authentication
-    ; clientCertPath =
-    ; # Allow invalid SSL server certificate
-    ; insecure = false
-    ; # include metrics help with the events
-    ; includeHelp = true
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 ---
 apiVersion: apps/v1beta2
@@ -974,6 +954,7 @@ spec:
       labels:
         daemon: collectorforkubernetes
     spec:
+      dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforkubernetes
       # We run this DaemonSet only for Non-Masters
@@ -990,7 +971,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.1
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.2
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1009,6 +990,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         # We store state in /data folder (file positions)
         - name: collectorforkubernetes-state
@@ -1045,6 +1030,10 @@ spec:
         - name: volumes-root
           mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
+        # correct timezone
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
       volumes:
       # We store state directly on host, change this location, if
       # your persistent volume is somewhere else
@@ -1079,6 +1068,10 @@ spec:
       - name: volumes-root
         hostPath:
           path: /var/lib/kubelet/
+      # correct timezone
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
       # configuration from ConfigMap
       - name: collectorforkubernetes-config
         configMap:
@@ -1110,6 +1103,7 @@ spec:
       labels:
         daemon: collectorforkubernetes
     spec:
+      dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforkubernetes
       affinity:
@@ -1124,7 +1118,7 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.1
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.2
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1141,6 +1135,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: collectorforkubernetes-state
           mountPath: /data
@@ -1171,6 +1169,9 @@ spec:
         - name: kubelet-root
           mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
       volumes:
       - name: collectorforkubernetes-state
         hostPath:
@@ -1199,6 +1200,9 @@ spec:
       - name: kubelet-root
         hostPath:
           path: /var/lib/kubelet/
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
       - name: collectorforkubernetes-config
         configMap:
           name: collectorforkubernetes
@@ -1233,7 +1237,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.1
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.2
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1250,6 +1254,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: collectorforkubernetes-state
           mountPath: /data

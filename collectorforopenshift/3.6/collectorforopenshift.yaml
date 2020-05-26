@@ -130,6 +130,11 @@ data:
     # Use value below to override specific name
     hostname =
 
+    # Default output for events, logs and metrics
+    # valid values: splunk and devnull
+    # Use devnull by default if you don't want to redirect data
+    defaultOutput = splunk
+
     # Default buffer size for file input
     fileInputBufferSize = 256b
 
@@ -176,6 +181,34 @@ data:
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
     volumesRootDir = /rootfs/var/lib/origin/openshift.local.volumes/
+
+
+    # watch for pods annotations, setup prometheus collection
+    # for these pods
+    # Addon listens on Pod Network
+    # DaemonSets listen on Host Network
+    [input.prometheus_auto]
+
+    # disable prometheus auto discovery for pods
+    disabled = false
+
+    # override type
+    type = openshift_prometheus
+
+    # specify Splunk index
+    index =
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # include metrics help with the events
+    includeHelp = true
+
+    # http client timeout
+    timeout = 30s
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Splunk output
@@ -330,6 +363,9 @@ data:
     # specify Splunk index
     index =
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # proc input
     [input.proc_stats]
@@ -352,7 +388,10 @@ data:
     # proc filesystem includes by default system threads (there can be over 100 of them)
     # these stats do not help with the observability
     # excluding them can reduce the size of the index, performance of the searches and usage of the collector
-    IncludeSystemThreads = false
+    includeSystemThreads = false
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # network stats
@@ -373,6 +412,9 @@ data:
     # specify Splunk index
     index =
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # network socket table
     [input.net_socket_table]
@@ -391,6 +433,28 @@ data:
 
     # specify Splunk index
     index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+
+    # mount input (collects mount stats where kubelet runtime is stored)
+    [input.mount_stats]
+
+    # disable system level stats
+    disabled = false
+
+    # how often to collect mount stats
+    statsInterval = 30s
+
+    # override type
+    type = openshift_mount_stats
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Container Log files
@@ -437,6 +501,9 @@ data:
     # Read http://man7.org/linux/man-pages/man4/console_codes.4.html for more information
     stripTerminalEscapeSequencesRegex = (\x1b\[\d{1,3}(;\d{1,3})*m)|(\x07)|(\x1b]\d+(\s\d)?;[^\x07]+\x07)|(.*\x1b\[K)
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # Application Logs
     [input.app_logs]
@@ -477,6 +544,9 @@ data:
     eventPatternMaxWait = 1s
     # Maximum message size
     eventPatternMaxSize = 100kb
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Host logs. Input syslog(.\d+)? files
@@ -526,6 +596,9 @@ data:
     # timestamp location (if not defined by format)
     timestampLocation = Local
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     # Host logs. Input all *.log(.\d+)? files
     [input.files::logs]
@@ -566,6 +639,9 @@ data:
 
     # timestamp location (if not defined by format)
     timestampLocation =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Pipe to join events (container logs only)
@@ -674,6 +750,9 @@ data:
     # can be useful to explore prometheus metrics
     includeHelp = false
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
   003-daemonset-master.conf: |
     [input.prometheus::kubernetes-api]
@@ -717,6 +796,9 @@ data:
     # include metrics help with the events
     includeHelp = false
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     [input.prometheus::controller]
 
@@ -757,6 +839,9 @@ data:
     # include metrics help with the events
     includeHelp = false
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
     [input.prometheus::etcd]
 
@@ -796,6 +881,9 @@ data:
 
     # include metrics help with the events
     includeHelp = false
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
 
     # Audit logs
@@ -838,6 +926,9 @@ data:
     # timestamp location (if not defined by format)
     timestampLocation =
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 
   004-addon.conf: |
     [general]
@@ -864,28 +955,9 @@ data:
     # Ignore events last seen later that this duration.
     # eventsTTL = 12h
 
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
 
-    # watch for pods annotations, setup prometheus collection
-    # for these pods
-    [input.prometheus_auto]
-
-    # disable prometheus auto discovery for pods
-    disabled = false
-
-    # override type
-    type = openshift_prometheus
-
-    # specify Splunk index
-    index =
-
-    # how often to collect prometheus metrics
-    interval = 60s
-
-    # include metrics help with the events
-    includeHelp = true
-
-    # http client timeout
-    timeout = 30s
 ---
 apiVersion: extensions/v1beta1
 kind: DaemonSet
@@ -899,12 +971,18 @@ spec:
   # When you update configuration
   updateStrategy:
     type: RollingUpdate
+
+  selector:
+    matchLabels:
+      daemon: collectorforopenshift
+
   template:
     metadata:
       name: collectorforopenshift
       labels:
         daemon: collectorforopenshift
     spec:
+      dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforopenshift
       # We run this DaemonSet only for Non-Masters
@@ -921,7 +999,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.1
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.2
         securityContext:
           privileged: true
           runAsUser: 0
@@ -938,6 +1016,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         # We store state in /data folder (file positions)
         - name: collectorforopenshift-state
@@ -974,6 +1056,10 @@ spec:
         - name: volumes-root
           mountPath: /rootfs/var/lib/origin/openshift.local.volumes/
           readOnly: true
+        # correct timezone
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
       volumes:
       # We store state directly on host, change this location, if
       # your persistent volume is somewhere else
@@ -1008,6 +1094,10 @@ spec:
       - name: volumes-root
         hostPath:
           path: /var/lib/origin/openshift.local.volumes/
+      # correct timezone
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
       # configuration from ConfigMap
       - name: collectorforopenshift-config
         configMap:
@@ -1028,12 +1118,18 @@ metadata:
 spec:
   updateStrategy:
     type: RollingUpdate
+
+  selector:
+    matchLabels:
+      daemon: collectorforopenshift
+
   template:
     metadata:
       name: collectorforopenshift-master
       labels:
         daemon: collectorforopenshift
     spec:
+      dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforopenshift
       # Deploy only on master
@@ -1049,7 +1145,7 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.1
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.2
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1065,6 +1161,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: collectorforopenshift-state
           mountPath: /data
@@ -1095,6 +1195,9 @@ spec:
         - name: origin-lib
           mountPath: /rootfs/var/lib/origin/
           readOnly: true
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
       volumes:
       - name: collectorforopenshift-state
         hostPath:
@@ -1123,6 +1226,9 @@ spec:
       - name: origin-lib
         hostPath:
           path: /var/lib/origin
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
       - name: collectorforopenshift-config
         configMap:
           name: collectorforopenshift
@@ -1155,7 +1261,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.1
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.2
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1171,6 +1277,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: collectorforopenshift-state
           mountPath: /data
