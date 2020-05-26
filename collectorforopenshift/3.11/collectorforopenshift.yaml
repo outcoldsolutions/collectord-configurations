@@ -38,6 +38,8 @@ rules:
   - batch
   - extensions
   - monitoring.coreos.com
+  - etcd.database.coreos.com
+  - vault.security.coreos.com
   - apps.openshift.io
   - build.openshift.io
   - operator.openshift.io
@@ -72,13 +74,15 @@ rules:
   - scheduledjobs
   - services
   - statefulsets
+  - vaultservices
+  - etcdclusters
+  - challenges
   - networks
   - tuneds
   - dnses
   - catalogsources
   - configmaps
   - clusterserviceversions
-  - challenges
   - kafkas
   - checlusters
   - oneagents
@@ -180,12 +184,35 @@ data:
     # indexed field my_environment=dev. Fields names should match to ^[a-z][_a-z0-9]*$
     # Better way to configure that is to specify labels for OpenShift Nodes.
     # ; fields.my_environment = dev
+    # Identify the cluster if you are planning to monitor multiple clusters
+    fields.openshift_cluster = -
 
     # Include EC2 Metadata (see list of possible fields https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html)
     # Should be in format ec2Metadata.{desired_field_name} = {url path to read the value}
     # ec2Metadata.ec2_instance_id = /latest/meta-data/instance-id
     # ec2Metadata.ec2_instance_type = /latest/meta-data/instance-type
 
+    # subdomain for the annotations added to the pods, workloads, namespaces or containers, like splunk.collectord.io/..
+    annotationsSubdomain =
+
+    # Configure acknowledgement database.
+    # - force fsync on every write to Write-Ahead-Log
+    db.fsync = false
+    # - maximum size of the Write-Ahead-Log
+    db.compactAt = 1M
+
+    # configure global thruput per second for forwarded logs (metrics are not included)
+    # for example if you set `thruputPerSecond = 512Kb`, that will limit amount of logs forwarded
+    # from the single Collectord instance to 512Kb per second.
+    # You can configure thruput individually for the logs (including specific for container logs) below
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
 
     # connection to kubernetes api
     [general.kubernetes]
@@ -561,6 +588,18 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # configure default thruput per second for for each container log
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the single container to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
 
     # Application Logs
     [input.app_logs]
@@ -604,6 +643,18 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # configure default thruput per second for for each container log
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the single container to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
 
 
     # Host logs. Input syslog(.\d+)? files
@@ -662,6 +713,18 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
 
     # Host logs. Input all *.log(.\d+)? files
     [input.files::logs]
@@ -712,6 +775,19 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+
 
     [input.journald]
 
@@ -719,14 +795,11 @@ data:
     disabled = false
 
     # root location of log files
-    path = /rootfs/var/log/journal/
+    path.persistent = /rootfs/var/log/journal/
+    path.volatile = /rootfs/run/log/journal/
 
     # when reach end of journald, how often to pull
     pollingInterval = 250ms
-
-    # if you don't want to forward journald from the beginning,
-    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
-    startFromRel =
 
     # override type
     type = openshift_host_logs
@@ -745,6 +818,18 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
 
 
     # Pipe to join events (container logs only)
@@ -924,7 +1009,7 @@ data:
     interval = 60s
 
     # prometheus endpoint
-    endpoint.https = https://127.0.0.1:10257/metrics
+    endpoint.https = https://127.0.0.1:8444/metrics
 
     # token for "Authorization: Bearer $(cat tokenPath)"
     tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -1040,6 +1125,18 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
 
   004-addon.conf: |
     [general]
@@ -1065,6 +1162,28 @@ data:
     # (obsolete, depends on kubernetes timeout)
     # Ignore events last seen later that this duration.
     # eventsTTL = 12h
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+
+    [input.kubernetes_watch::pods]
+
+    # disable events
+    disabled = false
+
+    # Set the timeout for how often watch request should refresh the whole list
+    refresh = 10m
+
+    apiVersion = v1
+    kind = pod
+    namespace =
+
+    # override type
+    type = openshift_objects
+
+    # specify Splunk index
+    index =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
@@ -1116,7 +1235,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.9.244
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.10.253
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1169,6 +1288,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+        - name: run-logs
+          mountPath: /rootfs/run/log/
+          readOnly: true
         # Application logs
 
         - name: volumes-root
@@ -1201,6 +1323,9 @@ spec:
       - name: logs
         hostPath:
           path: /var/log
+      - name: run-logs
+        hostPath:
+          path: /run/log
       # Docker socket
       - name: docker-unix-socket
         hostPath:
@@ -1272,7 +1397,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.9.244
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.10.253
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1316,6 +1441,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+        - name: run-logs
+          mountPath: /rootfs/run/log/
+          readOnly: true
 
         - name: origin-certs
           mountPath: /rootfs/etc/origin/master/
@@ -1343,6 +1471,9 @@ spec:
       - name: logs
         hostPath:
           path: /var/log
+      - name: run-logs
+        hostPath:
+          path: /run/log
       - name: docker-unix-socket
         hostPath:
           path: /var/run/docker.sock
@@ -1396,7 +1527,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.9.244
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.10.253
         securityContext:
           privileged: true
           runAsUser: 0

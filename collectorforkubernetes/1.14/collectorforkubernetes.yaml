@@ -172,12 +172,35 @@ data:
     # indexed field my_environment=dev. Fields names should match to ^[a-z][_a-z0-9]*$
     # Better way to configure that is to specify labels for Kubernetes Nodes.
     # ; fields.my_environment = dev
+    # Identify the cluster if you are planning to monitor multiple clusters
+    fields.kubernetes_cluster = -
 
     # Include EC2 Metadata (see list of possible fields https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html)
     # Should be in format ec2Metadata.{desired_field_name} = {url path to read the value}
     # ec2Metadata.ec2_instance_id = /latest/meta-data/instance-id
     # ec2Metadata.ec2_instance_type = /latest/meta-data/instance-type
 
+    # subdomain for the annotations added to the pods, workloads, namespaces or containers, like splunk.collectord.io/..
+    annotationsSubdomain =
+
+    # Configure acknowledgement database.
+    # - force fsync on every write to Write-Ahead-Log
+    db.fsync = false
+    # - maximum size of the Write-Ahead-Log
+    db.compactAt = 1M
+
+    # configure global thruput per second for forwarded logs (metrics are not included)
+    # for example if you set `thruputPerSecond = 512Kb`, that will limit amount of logs forwarded
+    # from the single Collectord instance to 512Kb per second.
+    # You can configure thruput individually for the logs (including specific for container logs) below
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
 
     # connection to kubernetes api
     [general.kubernetes]
@@ -552,6 +575,18 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # configure default thruput per second for for each container log
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the single container to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
 
     # Application Logs
     [input.app_logs]
@@ -595,6 +630,18 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # configure default thruput per second for for each container log
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the single container to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
 
 
     # Host logs. Input syslog(.\d+)? files
@@ -653,6 +700,18 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
 
     # Host logs. Input all *.log(.\d+)? files
     [input.files::logs]
@@ -703,6 +762,18 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
 
     [input.journald]
 
@@ -710,7 +781,8 @@ data:
     disabled = false
 
     # root location of log files
-    path = /rootfs/var/log/journal/
+    path.persistent = /rootfs/var/log/journal/
+    path.volatile = /rootfs/run/log/journal/
 
     # when reach end of journald, how often to pull
     pollingInterval = 250ms
@@ -736,6 +808,18 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
 
 
     # Pipe to join events (container logs only)
@@ -1026,6 +1110,28 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+
+    [input.kubernetes_watch::pods]
+
+    # disable events
+    disabled = false
+
+    # Set the timeout for how often watch request should refresh the whole list
+    refresh = 10m
+
+    apiVersion = v1
+    kind = pod
+    namespace =
+
+    # override type
+    type = kubernetes_objects
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -1073,7 +1179,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.9.244
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.10.253
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1128,6 +1234,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+        - name: run-logs
+          mountPath: /rootfs/run/log/
+          readOnly: true
         # Application logs
         - name: volumes-root
           mountPath: /rootfs/var/lib/kubelet/
@@ -1158,6 +1267,9 @@ spec:
       - name: logs
         hostPath:
           path: /var/log
+      - name: run-logs
+        hostPath:
+          path: /run/log
       # Docker socket
       - name: docker-unix-socket
         hostPath:
@@ -1226,7 +1338,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.9.244
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.10.253
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1271,6 +1383,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+        - name: run-logs
+          mountPath: /rootfs/run/log/
+          readOnly: true
         - name: k8s-certs
           mountPath: /rootfs/etc/kubernetes/pki/
           readOnly: true
@@ -1296,6 +1411,9 @@ spec:
       - name: logs
         hostPath:
           path: /var/log
+      - name: run-logs
+        hostPath:
+          path: /run/log
       - name: docker-unix-socket
         hostPath:
           path: /var/run/docker.sock
@@ -1349,7 +1467,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.9.244
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.10.253
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
