@@ -221,7 +221,7 @@ data:
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
 
-    volumesRootDir = /rootfs/var/lib/origin/openshift.local.volumes/
+    volumesRootDir = /rootfs/var/lib/kubelet/
 
     # You can attach annotations as a metadata, using the format
     #   includeAnnotations.{key} = {regexp}
@@ -606,111 +606,6 @@ data:
     output =
 
 
-    # Host logs. Input syslog(.\d+)? files
-    [input.files::syslog]
-
-    # disable host level logs
-    disabled = false
-
-    # root location of docker files
-    path = /rootfs/var/log/
-
-    # regex matching pattern
-    match = ^(syslog|messages)(.\d+)?$
-
-    # limit search only on one level
-    recursive = false
-
-    # files are read using polling schema, when reach the EOF how often to check if files got updated
-    pollingInterval = 250ms
-
-    # how often o look for the new files under logs path
-    walkingInterval = 5s
-
-    # include verbose fields in events (file offset)
-    verboseFields = false
-
-    # override type
-    type = openshift_host_logs
-
-    # specify Splunk index
-    index =
-
-    # field extraction
-    extraction = ^(?P<timestamp>[A-Za-z]+\s+\d+\s\d+:\d+:\d+)\s(?P<syslog_hostname>[^\s]+)\s(?P<syslog_component>[^:\[]+)(\[(?P<syslog_pid>\d+)\])?: (.+)$
-
-    # timestamp field
-    timestampField = timestamp
-
-    # format for timestamp
-    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
-    timestampFormat = Jan 2 15:04:05
-
-    # Adjust date, if month/day aren't set in format
-    timestampSetMonth = false
-    timestampSetDay = false
-
-    # timestamp location (if not defined by format)
-    timestampLocation = Local
-
-    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
-    samplingPercent = -1
-
-    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
-    samplingKey =
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-
-    # Host logs. Input all *.log(.\d+)? files
-    [input.files::logs]
-
-    # disable host level logs
-    disabled = false
-
-    # root location of log files
-    path = /rootfs/var/log/
-
-    # regex matching pattern
-    match = ^(([\w\-.]+\.log(.[\d\-]+)?)|(docker))$
-
-    # files are read using polling schema, when reach the EOF how often to check if files got updated
-    pollingInterval = 250ms
-
-    # how often o look for the new files under logs path
-    walkingInterval = 5s
-
-    # include verbose fields in events (file offset)
-    verboseFields = false
-
-    # override type
-    type = openshift_host_logs
-
-    # specify Splunk index
-    index =
-
-    # field extraction
-    extraction =
-
-    # timestamp field
-    timestampField =
-
-    # format for timestamp
-    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
-    timestampFormat =
-
-    # timestamp location (if not defined by format)
-    timestampLocation =
-
-    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
-    samplingPercent = -1
-
-    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
-    samplingKey =
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
 
 
     [input.journald]
@@ -968,7 +863,7 @@ data:
 
     # prometheus endpoint
 
-    endpoint.https = https://:2379/metrics
+    endpoint.https = https://:9979/metrics
 
 
     # token for "Authorization: Bearer $(cat tokenPath)"
@@ -976,13 +871,13 @@ data:
 
     # server certificate for certificate validation
 
-    certPath = /rootfs/etc/origin/master/master.etcd-ca.crt
+    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/metric-ca.crt
 
 
     # client certificate for authentication
 
-    clientCertPath = /rootfs/etc/origin/master/master.etcd-client.crt
-    clientKeyPath = /rootfs/etc/origin/master/master.etcd-client.key
+    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.crt
+    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.key
 
 
     # Allow invalid SSL server certificate
@@ -1003,10 +898,10 @@ data:
 
 
     # root location of for audit logs
-    path = /rootfs/var/lib/origin/openpaas-oscp-audit/
+    path = /rootfs/var/log/kube-apiserver/
 
-    # regex matching pattern
-    match = ^[\w\-\.]+\.log(.\d+)?$
+    # glob matching files
+    glob = audit-*.log
 
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
@@ -1172,7 +1067,7 @@ spec:
         # Application logs
 
         - name: volumes-root
-          mountPath: /rootfs/var/lib/origin/openshift.local.volumes/
+          mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
 
         # correct timezone
@@ -1213,7 +1108,7 @@ spec:
 
       - name: volumes-root
         hostPath:
-          path: /var/lib/origin/openshift.local.volumes/
+          path: /var/lib/kubelet/
 
       # correct timezone
       - name: localtime
@@ -1317,11 +1212,11 @@ spec:
           mountPath: /rootfs/var/log/
           readOnly: true
 
-        - name: origin-certs
-          mountPath: /rootfs/etc/origin/master/
+        - name: etcd-certs
+          mountPath: /rootfs/etc/kubernetes/static-pod-resources/etcd-member/
           readOnly: true
         - name: volumes-root
-          mountPath: /rootfs/var/lib/origin/
+          mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
 
         - name: localtime
@@ -1350,12 +1245,12 @@ spec:
         hostPath:
           path: /var/run/crio/
 
-      - name: origin-certs
+      - name: etcd-certs
         hostPath:
-          path: /etc/origin/master/
+          path: /etc/kubernetes/static-pod-resources/etcd-member/
       - name: volumes-root
         hostPath:
-          path: /var/lib/origin/
+          path: /var/lib/kubelet/
 
       - name: localtime
         hostPath:

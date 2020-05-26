@@ -33,6 +33,16 @@ rules:
   - monitoring.coreos.com
   - apps.openshift.io
   - build.openshift.io
+  - operator.openshift.io
+  - tuned.openshift.io
+  - operators.coreos.com
+  - certmanager.k8s.io
+  - kafka.strimzi.io
+  - org.eclipse.che
+  - dynatrace.com
+  - template.openshift.io
+  - nats.io
+  - syndesis.io
   resources:
   - alertmanagers
   - buildconfigs
@@ -55,6 +65,19 @@ rules:
   - scheduledjobs
   - services
   - statefulsets
+  - networks
+  - tuneds
+  - dnses
+  - catalogsources
+  - configmaps
+  - clusterserviceversions
+  - challenges
+  - kafkas
+  - checlusters
+  - oneagents
+  - templateinstances
+  - natsclusters
+  - syndesises
   verbs:
   - get
   - list
@@ -190,6 +213,7 @@ data:
 
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
+
     volumesRootDir = /rootfs/var/lib/origin/openshift.local.volumes/
 
     # You can attach annotations as a metadata, using the format
@@ -698,7 +722,7 @@ data:
     startFromRel =
 
     # override type
-    type = kubernetes_host_logs
+    type = openshift_host_logs
 
     # specify Splunk index
     index =
@@ -708,6 +732,9 @@ data:
 
     # sampling key (should be regexp with the named match pattern `key`)
     samplingKey =
+
+    # how often to reopen the journald to free old files
+    reopenInterval = 1h
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
@@ -890,7 +917,7 @@ data:
     interval = 60s
 
     # prometheus endpoint
-    endpoint.https = https://127.0.0.1:8444/metrics
+    endpoint.https = https://127.0.0.1:10257/metrics
 
     # token for "Authorization: Bearer $(cat tokenPath)"
     tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -933,17 +960,23 @@ data:
     interval = 60s
 
     # prometheus endpoint
+
     endpoint.https = https://:2379/metrics
+
 
     # token for "Authorization: Bearer $(cat tokenPath)"
     tokenPath =
 
     # server certificate for certificate validation
+
     certPath = /rootfs/etc/origin/master/master.etcd-ca.crt
 
+
     # client certificate for authentication
+
     clientCertPath = /rootfs/etc/origin/master/master.etcd-client.crt
     clientKeyPath = /rootfs/etc/origin/master/master.etcd-client.key
+
 
     # Allow invalid SSL server certificate
     insecure = true
@@ -961,11 +994,13 @@ data:
     # disable host level logs
     disabled = false
 
+
     # root location of for audit logs
     path = /rootfs/var/lib/origin/openpaas-oscp-audit/
 
     # regex matching pattern
     match = ^[\w\-\.]+\.log(.\d+)?$
+
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
@@ -1075,7 +1110,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.8.230
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.9.244
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1129,9 +1164,11 @@ spec:
           mountPath: /rootfs/var/log/
           readOnly: true
         # Application logs
+
         - name: volumes-root
           mountPath: /rootfs/var/lib/origin/openshift.local.volumes/
           readOnly: true
+
         # correct timezone
         - name: localtime
           mountPath: /etc/localtime
@@ -1167,9 +1204,11 @@ spec:
         hostPath:
           path: /var/run/crio/
       # Location for origin mounts, to autodiscover application logs
+
       - name: volumes-root
         hostPath:
           path: /var/lib/origin/openshift.local.volumes/
+
       # correct timezone
       - name: localtime
         hostPath:
@@ -1228,7 +1267,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.8.230
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.9.244
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1272,12 +1311,14 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
+
         - name: origin-certs
           mountPath: /rootfs/etc/origin/master/
           readOnly: true
-        - name: origin-lib
+        - name: volumes-root
           mountPath: /rootfs/var/lib/origin/
           readOnly: true
+
         - name: localtime
           mountPath: /etc/localtime
           readOnly: true
@@ -1303,12 +1344,14 @@ spec:
       - name: crio-unix-socket
         hostPath:
           path: /var/run/crio/
+
       - name: origin-certs
         hostPath:
           path: /etc/origin/master/
-      - name: origin-lib
+      - name: volumes-root
         hostPath:
-          path: /var/lib/origin
+          path: /var/lib/origin/
+
       - name: localtime
         hostPath:
           path: /etc/localtime
@@ -1349,7 +1392,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.8.230
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.9.244
         securityContext:
           privileged: true
           runAsUser: 0

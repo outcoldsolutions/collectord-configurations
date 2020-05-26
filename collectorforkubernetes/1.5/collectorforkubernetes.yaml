@@ -645,6 +645,9 @@ data:
     # sampling key (should be regexp with the named match pattern `key`)
     samplingKey =
 
+    # how often to reopen the journald to free old files
+    reopenInterval = 1h
+
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
@@ -981,7 +984,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.8.230
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.9.244
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1131,7 +1134,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.8.230
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.9.244
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1251,7 +1254,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.8.230
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.9.244
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
