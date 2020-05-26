@@ -5,6 +5,22 @@ metadata:
     app: collectorforkubernetes
   name: collectorforkubernetes
 ---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: configurations.collectord.io
+spec:
+  group: collectord.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+  scope: Cluster
+  names:
+    plural: configurations
+    singular: configuration
+    kind: Configuration
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -48,6 +64,7 @@ rules:
   - dynatrace.com
   - nats.io
   - syndesis.io
+  - collectord.io
   resources:
   - alertmanagers
   - cronjobs
@@ -76,6 +93,7 @@ rules:
   - natsclusters
   - syndesises
   - persistentvolumeclaims
+  - configurations
   verbs:
   - get
   - list
@@ -247,6 +265,11 @@ data:
     #   includeAnnotations.1 = ^prometheus\.io.*
     #   includeAnnotations.2 = ^example\.com.*
 
+    # watch for changes (annotations) in the objects
+    watch.namespaces = v1/namespace
+    watch.deployments = apis/v1/deployment
+    watch.configurations = apis/v1/collectord.io/configuration
+
 
     # watch for pods annotations, setup prometheus collection
     # for these pods
@@ -359,7 +382,7 @@ data:
     # all pipelines, because just some events have incorrect index
     dedicatedClientPerIndex = true
     # in case if some indexes aren't used anymore, how often to destroy the dedicated client
-    dedicatedClientCleanPeriod = 24h
+    # dedicatedClientCleanPeriod = 24h
     # possible values: RedirectToDefault, Drop, Retry
     incorrectIndexBehavior = RedirectToDefault
 
@@ -416,7 +439,8 @@ data:
     [input.system_stats]
 
     # disable system level stats
-    disabled = false
+    disabled.host = false
+    disabled.cgroup = false
 
     # cgroups fs location
     pathCgroups = /rootfs/sys/fs/cgroup
@@ -428,13 +452,16 @@ data:
     statsInterval = 30s
 
     # override type
-    type = kubernetes_stats
+    type.host = kubernetes_stats_v2_host
+    type.cgroup = kubernetes_stats_v2_cgroup
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
 
     # proc input
@@ -447,13 +474,14 @@ data:
     pathProc = /rootfs/proc
 
     # how often to collect proc stats
-    statsInterval = 30s
+    statsInterval = 60s
 
     # override type
-    type = kubernetes_proc_stats
+    type = kubernetes_proc_stats_v2
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # proc filesystem includes by default system threads (there can be over 100 of them)
     # these stats do not help with the observability
@@ -461,7 +489,8 @@ data:
     includeSystemThreads = false
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
 
     # network stats
@@ -477,7 +506,7 @@ data:
     statsInterval = 30s
 
     # override type
-    type = kubernetes_net_stats
+    type = kubernetes_net_stats_v2
 
     # specify Splunk index
     index =
@@ -909,6 +938,12 @@ data:
     output =
 
 
+    # [diagnostics::node-entropy]
+    # settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
+    # settings.interval = 1h
+    # settings.threshold = 800
+
+
   003-daemonset-master.conf: |
     [input.prometheus::kubernetes-api]
 
@@ -1182,7 +1217,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.11.261
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.12.273
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1238,11 +1273,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
-          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
-          mountPropagation: HostToContainer
         # Application logs
         - name: volumes-root
           mountPath: /rootfs/var/lib/kubelet/
@@ -1345,7 +1378,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.11.261
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.12.273
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1391,11 +1424,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
-          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
-          mountPropagation: HostToContainer
         - name: k8s-certs
           mountPath: /rootfs/etc/kubernetes/pki/
           readOnly: true
@@ -1478,7 +1509,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.11.261
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.12.273
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

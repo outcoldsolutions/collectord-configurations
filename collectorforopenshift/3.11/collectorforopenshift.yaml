@@ -8,6 +8,22 @@ metadata:
     openshift.io/node-selector: ''
     openshift.io/description: 'Monitoring OpenShift in Splunk, built by Outcold Solutions'
     openshift.io/display-name: 'Collector for OpenShift'
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: configurations.collectord.io
+spec:
+  group: collectord.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+  scope: Cluster
+  names:
+    plural: configurations
+    singular: configuration
+    kind: Configuration
 
 ---
 apiVersion: scheduling.k8s.io/v1beta1
@@ -52,6 +68,7 @@ rules:
   - template.openshift.io
   - nats.io
   - syndesis.io
+  - collectord.io
   resources:
   - alertmanagers
   - buildconfigs
@@ -90,6 +107,7 @@ rules:
   - natsclusters
   - syndesises
   - persistentvolumeclaims
+  - configurations
   verbs:
   - get
   - list
@@ -260,6 +278,11 @@ data:
     #   includeAnnotations.1 = ^prometheus\.io.*
     #   includeAnnotations.2 = ^example\.com.*
 
+    # watch for changes (annotations) in the objects
+    watch.namespaces = v1/namespace
+    watch.deploymentconfigs = apis/v1/apps.openshift.io/deploymentconfig
+    watch.configurations = apis/v1/collectord.io/configuration
+
 
     # watch for pods annotations, setup prometheus collection
     # for these pods
@@ -429,7 +452,8 @@ data:
     [input.system_stats]
 
     # disable system level stats
-    disabled = false
+    disabled.host = false
+    disabled.cgroup = false
 
     # cgroups fs location
     pathCgroups = /rootfs/sys/fs/cgroup
@@ -441,13 +465,16 @@ data:
     statsInterval = 30s
 
     # override type
-    type = openshift_stats
+    type.host = openshift_stats_v2_host
+    type.cgroup = openshift_stats_v2_cgroup
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
 
     # proc input
@@ -460,13 +487,14 @@ data:
     pathProc = /rootfs/proc
 
     # how often to collect proc stats
-    statsInterval = 30s
+    statsInterval = 60s
 
     # override type
-    type = openshift_proc_stats
+    type = openshift_proc_stats_v2
 
     # specify Splunk index
-    index =
+    index.host =
+    index.cgroup =
 
     # proc filesystem includes by default system threads (there can be over 100 of them)
     # these stats do not help with the observability
@@ -474,7 +502,8 @@ data:
     includeSystemThreads = false
 
     # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
+    output.host =
+    output.cgroup =
 
 
     # network stats
@@ -490,7 +519,7 @@ data:
     statsInterval = 30s
 
     # override type
-    type = openshift_net_stats
+    type = openshift_net_stats_v2
 
     # specify Splunk index
     index =
@@ -945,6 +974,12 @@ data:
     output =
 
 
+    # [diagnostics::node-entropy]
+    # settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
+    # settings.interval = 1h
+    # settings.threshold = 800
+
+
   003-daemonset-master.conf: |
     [input.prometheus::kubernetes-api]
 
@@ -1238,7 +1273,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.11.263
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.12.273
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1292,11 +1327,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
-          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
-          mountPropagation: HostToContainer
         # Application logs
 
         - name: volumes-root
@@ -1404,7 +1437,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.11.263
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.12.273
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1449,11 +1482,9 @@ spec:
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
-          mountPropagation: HostToContainer
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
-          mountPropagation: HostToContainer
 
         - name: origin-certs
           mountPath: /rootfs/etc/origin/master/
@@ -1538,7 +1569,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.11.263
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.12.273
         securityContext:
           privileged: true
           runAsUser: 0
