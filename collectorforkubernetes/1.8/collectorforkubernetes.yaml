@@ -38,6 +38,7 @@ rules:
   - jobs
   - namespaces
   - nodes
+  - nodes/metrics
   - nodes/proxy
   - pods
   - prometheuses
@@ -293,6 +294,12 @@ data:
     # possible values: RedirectToDefault, Drop, Retry
     incorrectIndexBehavior = RedirectToDefault
 
+    # gzip compression level (nocompression, default, 1...9)
+    compressionLevel = default
+
+    # number of dedicated splunk output threads (to increase throughput above 4k events per second)
+    threads = 1
+
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
 
@@ -324,6 +331,16 @@ data:
 
     # regex to find docker container cgroups (helps excluding other cgroups with matched ID)
     containersCgroupFilter = ^(/([^/\s]+/)*(docker-|docker/)[0-9a-f]{64}(\.scope)?)$
+
+
+    // connection to CRIO
+    [general.cri-o]
+
+    # url for CRIO API, only unix socket is supported
+    url = unix:///rootfs/var/run/crio/crio.sock
+
+    # Timeout for http responses to docker client. The streaming requests depend on this timeout.
+    timeout = 1m
 
 
     # cgroup input
@@ -362,6 +379,49 @@ data:
 
     # override type
     type = kubernetes_proc_stats
+
+    # specify Splunk index
+    index =
+
+    # proc filesystem includes by default system threads (there can be over 100 of them)
+    # these stats do not help with the observability
+    # excluding them can reduce the size of the index, performance of the searches and usage of the collector
+    IncludeSystemThreads = false
+
+
+    # network stats
+    [input.net_stats]
+
+    # disable net stats
+    disabled = false
+
+    # proc path location
+    pathProc = /rootfs/proc
+
+    # how often to collect net stats
+    statsInterval = 30s
+
+    # override type
+    type = kubernetes_net_stats
+
+    # specify Splunk index
+    index =
+
+
+    # network socket table
+    [input.net_socket_table]
+
+    # disable net stats
+    disabled = false
+
+    # proc path location
+    pathProc = /rootfs/proc
+
+    # how often to collect net stats
+    statsInterval = 30s
+
+    # override type
+    type = kubernetes_net_socket_table
 
     # specify Splunk index
     index =
@@ -418,7 +478,7 @@ data:
     # disable container application logs monitoring
     disabled = false
 
-    # root location of mounts (applies to hostPath mounts only), if differs from host
+    # root location of mounts (applies to hostPath mounts only), if the hostPath differs inside container from the path on host
     root = /rootfs/
 
     # how often to review list of available volumes
@@ -511,7 +571,7 @@ data:
     path = /rootfs/var/log/
 
     # regex matching pattern
-    match = ^[\w]+\.log(.\d+)?$
+    match = ^[\w\-\.]+\.log(.\d+)?$
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
@@ -795,7 +855,7 @@ data:
 
     [input.kubernetes_events]
 
-    # disable host level logs
+    # disable events
     disabled = false
 
     # override type
@@ -811,6 +871,30 @@ data:
     # (obsolete, depends on kubernetes timeout)
     # Ignore events last seen later that this duration.
     # eventsTTL = 12h
+
+
+    # watch for pods annotations, setup prometheus collection
+    # for these pods
+    [input.prometheus_auto]
+
+    # disable prometheus auto discovery for pods
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # include metrics help with the events
+    includeHelp = true
+
+    # http client timeout
+    timeout = 30s
+
 
     ; # Example on how to get scheduler metrics with endpoint discovery
     ; [input.prometheus::scheduler]
@@ -906,7 +990,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.0
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.1
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -941,15 +1025,19 @@ spec:
         - name: proc
           mountPath: /rootfs/proc
           readOnly: true
-        # Docker logs (JSON files)
-        - name: docker-logs
+        # Location of docker root (for container logs and metadata)
+        - name: docker-root
           mountPath: /rootfs/var/lib/docker/
           readOnly: true
         # Docker socket
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
           readOnly: true
-        # Host logs
+        # CRI-O socket (if using CRI-O runtime)
+        - name: crio-unix-socket
+          mountPath: /rootfs/var/run/crio/
+          readOnly: true
+        # Host logs location (including CRI-O logs)
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
@@ -964,7 +1052,7 @@ spec:
         hostPath:
           path: /var/lib/collectorforkubernetes/data/
       # Location of docker root (for container logs and metadata)
-      - name: docker-logs
+      - name: docker-root
         hostPath:
           path: /var/lib/docker/
       # Location of cgroups file system
@@ -975,7 +1063,7 @@ spec:
       - name: proc
         hostPath:
           path: /proc
-      # Host logs location (also includes CRI-O logs)
+      # Host logs location (including CRI-O logs)
       - name: logs
         hostPath:
           path: /var/log
@@ -983,6 +1071,10 @@ spec:
       - name: docker-unix-socket
         hostPath:
           path: /var/run/docker.sock
+      # CRI-O socket (if using CRI-O runtime)
+      - name: crio-unix-socket
+        hostPath:
+          path: /var/run/crio/
       # Location for kubelet mounts, to autodiscover application logs
       - name: volumes-root
         hostPath:
@@ -1032,7 +1124,7 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.0
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.1
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1067,13 +1159,16 @@ spec:
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
           readOnly: true
+        - name: crio-unix-socket
+          mountPath: /rootfs/var/run/crio/
+          readOnly: true
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
         - name: k8s-certs
           mountPath: /rootfs/etc/kubernetes/pki/
           readOnly: true
-        - name: volumes-root
+        - name: kubelet-root
           mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
       volumes:
@@ -1095,10 +1190,13 @@ spec:
       - name: docker-unix-socket
         hostPath:
           path: /var/run/docker.sock
+      - name: crio-unix-socket
+        hostPath:
+          path: /var/run/crio/
       - name: k8s-certs
         hostPath:
           path: /etc/kubernetes/pki/
-      - name: volumes-root
+      - name: kubelet-root
         hostPath:
           path: /var/lib/kubelet/
       - name: collectorforkubernetes-config
@@ -1135,7 +1233,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.0
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.1
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

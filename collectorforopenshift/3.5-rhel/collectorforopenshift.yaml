@@ -33,23 +33,26 @@ rules:
   - apps.openshift.io
   - build.openshift.io
   resources:
-  - namespaces
-  - events
+  - buildconfigs
+  - builds
   - cronjobs
   - daemonsets
+  - deploymentconfigs
   - deployments
+  - endpoints
+  - events
   - jobs
+  - namespaces
   - nodes
+  - nodes/metrics
+  - nodes/proxy
   - pods
+  - prometheuses
   - replicasets
   - replicationcontrollers
   - scheduledjobs
+  - services
   - statefulsets
-  - prometheuses
-  - deploymentconfigs
-  - builds
-  - buildconfigs
-  - nodes/metrics
   verbs:
   - get
   - list
@@ -153,7 +156,7 @@ data:
     certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
     # Default timeout for http responses. The streaming/watch requests depend on this timeout.
-    timeout = 5s
+    timeout = 5m
 
     # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
     # metadataFetchRetry = 5s
@@ -178,7 +181,7 @@ data:
     # Splunk output
     [output.splunk]
 
-     # Splunk HTTP Event Collector url
+    # Splunk HTTP Event Collector url
     url =
     # You can specify muiltiple splunk URls with
     #
@@ -257,6 +260,12 @@ data:
     # possible values: RedirectToDefault, Drop, Retry
     incorrectIndexBehavior = RedirectToDefault
 
+    # gzip compression level (nocompression, default, 1...9)
+    compressionLevel = default
+
+    # number of dedicated splunk output threads (to increase throughput above 4k events per second)
+    threads = 1
+
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
 
@@ -267,7 +276,7 @@ data:
     url = unix:///rootfs/var/run/docker.sock
 
     # path to docker root folder (can fallback to use folder structure to read docker metadata)
-    dockerRootFolder =  /rootfs/var/lib/docker/
+    dockerRootFolder = /rootfs/var/lib/docker/
 
     # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
     # metadataFetchRetry = 5s
@@ -288,6 +297,16 @@ data:
 
     # regex to find docker container cgroups (helps excluding other cgroups with matched ID)
     containersCgroupFilter = ^(/([^/\s]+/)*(docker-|docker/)[0-9a-f]{64}(\.scope)?)$
+
+
+    // connection to CRIO
+    [general.cri-o]
+
+    # url for CRIO API, only unix socket is supported
+    url = unix:///rootfs/var/run/crio/crio.sock
+
+    # Timeout for http responses to docker client. The streaming requests depend on this timeout.
+    timeout = 1m
 
 
     # cgroup input
@@ -326,6 +345,49 @@ data:
 
     # override type
     type = openshift_proc_stats
+
+    # specify Splunk index
+    index =
+
+    # proc filesystem includes by default system threads (there can be over 100 of them)
+    # these stats do not help with the observability
+    # excluding them can reduce the size of the index, performance of the searches and usage of the collector
+    IncludeSystemThreads = false
+
+
+    # network stats
+    [input.net_stats]
+
+    # disable net stats
+    disabled = false
+
+    # proc path location
+    pathProc = /rootfs/proc
+
+    # how often to collect net stats
+    statsInterval = 30s
+
+    # override type
+    type = openshift_net_stats
+
+    # specify Splunk index
+    index =
+
+
+    # network socket table
+    [input.net_socket_table]
+
+    # disable net stats
+    disabled = false
+
+    # proc path location
+    pathProc = /rootfs/proc
+
+    # how often to collect net stats
+    statsInterval = 30s
+
+    # override type
+    type = openshift_net_socket_table
 
     # specify Splunk index
     index =
@@ -382,7 +444,7 @@ data:
     # disable container application logs monitoring
     disabled = false
 
-    # root location of mounts (applies to hostPath mounts only), if differs from host
+    # root location of mounts (applies to hostPath mounts only), if the hostPath differs inside container from the path on host
     root = /rootfs/
 
     # how often to review list of available volumes
@@ -742,7 +804,7 @@ data:
     # disable host level logs
     disabled = false
 
-    # root location of docker files
+    # root location of for audit logs
     path = /rootfs/var/lib/origin/openpaas-oscp-audit/
 
     # regex matching pattern
@@ -801,6 +863,29 @@ data:
     # (obsolete, depends on kubernetes timeout)
     # Ignore events last seen later that this duration.
     # eventsTTL = 12h
+
+
+    # watch for pods annotations, setup prometheus collection
+    # for these pods
+    [input.prometheus_auto]
+
+    # disable prometheus auto discovery for pods
+    disabled = false
+
+    # override type
+    type = openshift_prometheus
+
+    # specify Splunk index
+    index =
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # include metrics help with the events
+    includeHelp = true
+
+    # http client timeout
+    timeout = 30s
 ---
 apiVersion: extensions/v1beta1
 kind: DaemonSet
@@ -836,7 +921,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.0
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.1
         securityContext:
           privileged: true
           runAsUser: 0
@@ -869,15 +954,19 @@ spec:
         - name: proc
           mountPath: /rootfs/proc
           readOnly: true
-        # Docker logs (JSON files)
-        - name: docker-logs
+        # Location of docker root (for container logs and metadata)
+        - name: docker-root
           mountPath: /rootfs/var/lib/docker/
           readOnly: true
         # Docker socket
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
           readOnly: true
-        # Host logs
+        # CRI-O socket (if using CRI-O runtime)
+        - name: crio-unix-socket
+          mountPath: /rootfs/var/run/crio/
+          readOnly: true
+        # Host logs location (including CRI-O logs)
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
@@ -891,10 +980,10 @@ spec:
       - name: collectorforopenshift-state
         hostPath:
           path: /var/lib/collectorforopenshift/data/
-      # Location of docker logs
-      - name: docker-logs
+      # Location of docker root (for container logs and metadata)
+      - name: docker-root
         hostPath:
-          path: /var/lib/docker/containers/
+          path: /var/lib/docker/
       # Location of cgroups file system
       - name: cgroup
         hostPath:
@@ -903,14 +992,18 @@ spec:
       - name: proc
         hostPath:
           path: /proc
-      # Host logs location
+      # Host logs location (including CRI-O logs)
       - name: logs
         hostPath:
           path: /var/log
-      # Unix socket
+      # Docker socket
       - name: docker-unix-socket
         hostPath:
           path: /var/run/docker.sock
+      # CRI-O socket (if using CRI-O runtime)
+      - name: crio-unix-socket
+        hostPath:
+          path: /var/run/crio/
       # Location for origin mounts, to autodiscover application logs
       - name: volumes-root
         hostPath:
@@ -956,7 +1049,7 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.0
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.1
         securityContext:
           privileged: true
           runAsUser: 0
@@ -985,10 +1078,13 @@ spec:
           mountPath: /rootfs/proc
           readOnly: true
         - name: docker-logs
-          mountPath: /rootfs/var/lib/docker/containers/
+          mountPath: /rootfs/var/lib/docker/
           readOnly: true
         - name: docker-unix-socket
           mountPath: /rootfs/var/run/docker.sock
+          readOnly: true
+        - name: crio-unix-socket
+          mountPath: /rootfs/var/run/crio/
           readOnly: true
         - name: logs
           mountPath: /rootfs/var/log/
@@ -1005,7 +1101,7 @@ spec:
           path: /var/lib/collectorforopenshift/data/
       - name: docker-logs
         hostPath:
-          path: /var/lib/docker/containers/
+          path: /var/lib/docker/
       - name: cgroup
         hostPath:
           path: /sys/fs/cgroup
@@ -1018,6 +1114,9 @@ spec:
       - name: docker-unix-socket
         hostPath:
           path: /var/run/docker.sock
+      - name: crio-unix-socket
+        hostPath:
+          path: /var/run/crio/
       - name: origin-certs
         hostPath:
           path: /etc/origin/master/
@@ -1056,7 +1155,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.0
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.1
         securityContext:
           privileged: true
           runAsUser: 0
