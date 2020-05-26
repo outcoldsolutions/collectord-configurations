@@ -122,6 +122,9 @@ data:
     # license server through proxy
     licenseServerProxyUrl =
 
+    # authentication with basic authorization (user:password)
+    licenseServerProxyBasicAuth =
+
     # license key
     license =
 
@@ -144,6 +147,11 @@ data:
     # indexed field my_environment=dev. Fields names should match to ^[a-z][_a-z0-9]*$
     # Better way to configure that is to specify labels for Kubernetes Nodes.
     # ; fields.my_environment = dev
+
+    # Include EC2 Metadata (see list of possible fields https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html)
+    # Should be in format ec2Metadata.{desired_field_name} = {url path to read the value}
+    # ec2Metadata.ec2_instance_id = /latest/meta-data/instance-id
+    # ec2Metadata.ec2_instance_type = /latest/meta-data/instance-type
 
 
     # connection to kubernetes api
@@ -258,6 +266,9 @@ data:
 
     # Splunk through proxy
     proxyUrl =
+
+    # authentication with basic authorization (user:password)
+    proxyBasicAuth =
 
     # Splunk acknowledgement url (.../services/collector/ack)
     ackUrl =
@@ -978,7 +989,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.3
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.4
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1127,7 +1138,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.3
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.4
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1246,7 +1257,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.3
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.4
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
