@@ -26,6 +26,13 @@ spec:
     kind: Configuration
 
 ---
+apiVersion: scheduling.k8s.io/v1beta1
+kind: PriorityClass
+metadata:
+  name: collectorforopenshift-critical
+value: 1000000000
+
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -266,7 +273,7 @@ data:
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
 
-    volumesRootDir = /rootfs/var/lib/origin/openshift.local.volumes/
+    volumesRootDir = /rootfs/var/lib/kubelet/
 
     # You can attach annotations as a metadata, using the format
     #   includeAnnotations.{key} = {regexp}
@@ -696,136 +703,6 @@ data:
     tooNewEvents =
 
 
-    # Host logs. Input syslog(.\d+)? files
-    [input.files::syslog]
-
-    # disable host level logs
-    disabled = false
-
-    # root location of docker files
-    path = /rootfs/var/log/
-
-    # regex matching pattern
-    match = ^(syslog|messages)(.\d+)?$
-
-    # limit search only on one level
-    recursive = false
-
-    # files are read using polling schema, when reach the EOF how often to check if files got updated
-    pollingInterval = 250ms
-
-    # how often o look for the new files under logs path
-    walkingInterval = 5s
-
-    # include verbose fields in events (file offset)
-    verboseFields = false
-
-    # override type
-    type = openshift_host_logs
-
-    # specify Splunk index
-    index =
-
-    # field extraction
-    extraction = ^(?P<timestamp>[A-Za-z]+\s+\d+\s\d+:\d+:\d+)\s(?P<syslog_hostname>[^\s]+)\s(?P<syslog_component>[^:\[]+)(\[(?P<syslog_pid>\d+)\])?: (.+)$
-
-    # timestamp field
-    timestampField = timestamp
-
-    # format for timestamp
-    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
-    timestampFormat = Jan 2 15:04:05
-
-    # Adjust date, if month/day aren't set in format
-    timestampSetMonth = false
-    timestampSetDay = false
-
-    # timestamp location (if not defined by format)
-    timestampLocation = Local
-
-    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
-    samplingPercent = -1
-
-    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
-    samplingKey =
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # configure default thruput per second for this files group
-    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
-    # from the files in this group to 128Kb per second.
-    thruputPerSecond =
-
-    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
-    # older than 7 days
-    tooOldEvents =
-
-    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
-    tooNewEvents =
-
-
-    # Host logs. Input all *.log(.\d+)? files
-    [input.files::logs]
-
-    # disable host level logs
-    disabled = false
-
-    # root location of log files
-    path = /rootfs/var/log/
-
-    # regex matching pattern
-    match = ^(([\w\-.]+\.log(.[\d\-]+)?)|(docker))$
-
-    # files are read using polling schema, when reach the EOF how often to check if files got updated
-    pollingInterval = 250ms
-
-    # how often o look for the new files under logs path
-    walkingInterval = 5s
-
-    # include verbose fields in events (file offset)
-    verboseFields = false
-
-    # override type
-    type = openshift_host_logs
-
-    # specify Splunk index
-    index =
-
-    # field extraction
-    extraction =
-
-    # timestamp field
-    timestampField =
-
-    # format for timestamp
-    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
-    timestampFormat =
-
-    # timestamp location (if not defined by format)
-    timestampLocation =
-
-    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
-    samplingPercent = -1
-
-    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
-    samplingKey =
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # configure default thruput per second for this files group
-    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
-    # from the files in this group to 128Kb per second.
-    thruputPerSecond =
-
-    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
-    # older than 7 days
-    tooOldEvents =
-
-    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
-    tooNewEvents =
-
 
 
     [input.journald]
@@ -985,13 +862,13 @@ data:
 
     
     whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^kubelet_runtime_operations_latency_microseconds$
-    whitelist.3 = ^kubelet_docker_operations_latency_microseconds_sum$
-    whitelist.4 = ^kubelet_network_plugin_operations_latency_microseconds_sum$
-    whitelist.5 = ^kubelet_cgroup_manager_latency_microseconds_sum$
+    whitelist.2 = ^kubelet_runtime_operations_duration_seconds_sum$
+    whitelist.3 = ^kubelet_docker_operations_duration_seconds_sum$
+    whitelist.4 = ^kubelet_network_plugin_operations_duration_seconds_sum$
+    whitelist.5 = ^kubelet_cgroup_manager_duration_seconds_sum$
     whitelist.6 = ^storage_operation_duration_seconds_sum$
-    whitelist.7 = ^kubelet_docker_operations_errors$
-    whitelist.8 = ^kubelet_runtime_operations_errors$
+    whitelist.7 = ^kubelet_docker_operations_errors_total$
+    whitelist.8 = ^kubelet_runtime_operations_errors_total$
     whitelist.9 = ^rest_client_requests_total$
     whitelist.10 = ^process_cpu_seconds_total$
     whitelist.11 = ^process_resident_memory_bytes$
@@ -1110,9 +987,9 @@ data:
 
     
     whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^scheduler_e2e_scheduling_latency_microseconds_sum$
-    whitelist.3 = ^scheduler_binding_latency_microseconds_sum$
-    whitelist.4 = ^scheduler_scheduling_algorithm_latency_microseconds_sum$
+    whitelist.2 = ^scheduler_e2e_scheduling_duration_seconds_sum$
+    whitelist.3 = ^scheduler_binding_duration_seconds_sum$
+    whitelist.4 = ^scheduler_scheduling_algorithm_duration_seconds_sum$
     whitelist.5 = ^process_cpu_seconds_total$
     whitelist.6 = ^process_resident_memory_bytes$
     whitelist.7 = ^process_virtual_memory_bytes$
@@ -1144,7 +1021,7 @@ data:
 
     # prometheus endpoint
 
-    endpoint.https = https://:2379/metrics
+    endpoint.https = https://:9979/metrics
 
 
     # token for "Authorization: Bearer $(cat tokenPath)"
@@ -1152,13 +1029,13 @@ data:
 
     # server certificate for certificate validation
 
-    certPath = /rootfs/etc/origin/master/master.etcd-ca.crt
+    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/metric-ca.crt
 
 
     # client certificate for authentication
 
-    clientCertPath = /rootfs/etc/origin/master/master.etcd-client.crt
-    clientKeyPath = /rootfs/etc/origin/master/master.etcd-client.key
+    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.crt
+    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.key
 
 
     # Allow invalid SSL server certificate
@@ -1201,10 +1078,10 @@ data:
 
 
     # root location of for audit logs
-    path = /rootfs/var/lib/origin/openpaas-oscp-audit/
+    path = /rootfs/var/log/kube-apiserver/
 
-    # regex matching pattern
-    match = ^[\w\-\.]+\.log(.\d+)?$
+    # glob matching files
+    glob = audit-*.log
 
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
@@ -1303,7 +1180,7 @@ data:
 
 ---
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 
 kind: DaemonSet
 metadata:
@@ -1327,10 +1204,9 @@ spec:
       labels:
         daemon: collectorforopenshift
       
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
-      
     spec:
+      
+      priorityClassName: collectorforopenshift-critical
       
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
@@ -1351,7 +1227,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.15.300
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1411,7 +1287,7 @@ spec:
         # Application logs
 
         - name: volumes-root
-          mountPath: /rootfs/var/lib/origin/openshift.local.volumes/
+          mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
           mountPropagation: HostToContainer
 
@@ -1456,7 +1332,7 @@ spec:
 
       - name: volumes-root
         hostPath:
-          path: /var/lib/origin/openshift.local.volumes/
+          path: /var/lib/kubelet/
 
       # correct timezone
       - name: localtime
@@ -1473,7 +1349,7 @@ spec:
             path: 002-daemonset.conf
 ---
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 
 kind: DaemonSet
 metadata:
@@ -1495,10 +1371,9 @@ spec:
       labels:
         daemon: collectorforopenshift
       
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
-      
     spec:
+      
+      priorityClassName: collectorforopenshift-critical
       
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
@@ -1518,7 +1393,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.15.300
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1567,11 +1442,11 @@ spec:
           mountPath: /rootfs/run/log/
           readOnly: true
 
-        - name: origin-certs
-          mountPath: /rootfs/etc/origin/master/
+        - name: etcd-certs
+          mountPath: /rootfs/etc/kubernetes/static-pod-resources/etcd-member/
           readOnly: true
         - name: volumes-root
-          mountPath: /rootfs/var/lib/origin/
+          mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
           mountPropagation: HostToContainer
 
@@ -1604,12 +1479,12 @@ spec:
         hostPath:
           path: /var/run/crio/
 
-      - name: origin-certs
+      - name: etcd-certs
         hostPath:
-          path: /etc/origin/master/
+          path: /etc/kubernetes/static-pod-resources/etcd-member/
       - name: volumes-root
         hostPath:
-          path: /var/lib/origin/
+          path: /var/lib/kubelet/
 
       - name: localtime
         hostPath:
@@ -1626,7 +1501,7 @@ spec:
             path: 003-daemonset-master.conf
 ---
 
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 
 kind: Deployment
 metadata:
@@ -1645,15 +1520,14 @@ spec:
       labels:
         daemon: collectorforopenshift
       
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
-      
     spec:
+      
+      priorityClassName: collectorforopenshift-critical
       
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.15.300
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
         securityContext:
           privileged: true
           runAsUser: 0

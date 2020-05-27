@@ -299,6 +299,9 @@ data:
     # how often to collect prometheus metrics
     interval = 60s
 
+    # request timeout
+    timeout = 60s
+
     # include metrics help with the events
     includeHelp = true
 
@@ -955,6 +958,9 @@ data:
     # how often to collect prometheus metrics
     interval = 60s
 
+    # request timeout
+    timeout = 60s
+
     # prometheus endpoint
     endpoint = https://127.0.0.1:10250/metrics
 
@@ -976,6 +982,21 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^kubelet_runtime_operations_latency_microseconds$
+    whitelist.3 = ^kubelet_docker_operations_latency_microseconds_sum$
+    whitelist.4 = ^kubelet_network_plugin_operations_latency_microseconds_sum$
+    whitelist.5 = ^kubelet_cgroup_manager_latency_microseconds_sum$
+    whitelist.6 = ^storage_operation_duration_seconds_sum$
+    whitelist.7 = ^kubelet_docker_operations_errors$
+    whitelist.8 = ^kubelet_runtime_operations_errors$
+    whitelist.9 = ^rest_client_requests_total$
+    whitelist.10 = ^process_cpu_seconds_total$
+    whitelist.11 = ^process_resident_memory_bytes$
+    whitelist.12 = ^process_virtual_memory_bytes$
+    
 
 
     # [diagnostics::node-entropy]
@@ -1005,6 +1026,9 @@ data:
     # how often to collect prometheus metrics
     interval = 60s
 
+    # request timeout
+    timeout = 60s
+
     # prometheus endpoint
     # at first trying to get it from localhost (that way avoiding load balancer, if multiple)
     # as fallback using proxy
@@ -1029,6 +1053,15 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^authenticated_user_requests$
+    whitelist.3 = ^apiserver_request_count$
+    whitelist.4 = ^process_cpu_seconds_total$
+    whitelist.5 = ^process_resident_memory_bytes$
+    whitelist.6 = ^process_virtual_memory_bytes$
+    
+
 
     [input.prometheus::controller]
 
@@ -1049,6 +1082,9 @@ data:
 
     # how often to collect prometheus metrics
     interval = 60s
+
+    # request timeout
+    timeout = 60s
 
     # prometheus endpoint
     endpoint.https = https://127.0.0.1:8444/metrics
@@ -1071,6 +1107,19 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^scheduler_e2e_scheduling_latency_microseconds_sum$
+    whitelist.3 = ^scheduler_binding_latency_microseconds_sum$
+    whitelist.4 = ^scheduler_scheduling_algorithm_latency_microseconds_sum$
+    whitelist.5 = ^process_cpu_seconds_total$
+    whitelist.6 = ^process_resident_memory_bytes$
+    whitelist.7 = ^process_virtual_memory_bytes$
+    whitelist.8 = ^node_collector_zone_size$
+    whitelist.9 = ^node_collector_zone_health$
+    whitelist.10 = ^node_collector_unhealthy_nodes_in_zone$
+    
 
 
     [input.prometheus::etcd]
@@ -1120,6 +1169,28 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    whitelist.1 = ^etcd_server_leader_changes_seen_total$
+    whitelist.2 = ^etcd_server_has_leader$
+    whitelist.3 = ^etcd_server_proposals_committed_total$
+    whitelist.4 = ^etcd_server_proposals_applied_total$
+    whitelist.5 = ^etcd_server_proposals_committed_total$
+    whitelist.6 = ^etcd_server_proposals_pending$
+    whitelist.7 = ^etcd_server_proposals_failed_total$
+    whitelist.8 = ^etcd_disk_wal_fsync_duration_seconds_sum$
+    whitelist.9 = ^etcd_disk_wal_fsync_duration_seconds_count$
+    whitelist.10 = ^etcd_disk_backend_commit_duration_seconds_sum$
+    whitelist.11 = ^etcd_disk_backend_commit_duration_seconds_count$
+    whitelist.12 = ^etcd_network_client_grpc_.*$
+    whitelist.13 = ^grpc_server_handled_total$
+    whitelist.14 = ^etcd_network_peer_round_trip_time_seconds_bucket$
+    whitelist.15 = ^process_cpu_seconds_total$
+    whitelist.16 = ^process_resident_memory_bytes$
+    whitelist.17 = ^process_virtual_memory_bytes$
+    whitelist.18 = ^process_open_fds$
+    whitelist.19 = ^process_max_fds$
+    whitelist.20 = ^etcd_disk_backend_commit_duration_seconds_bucket$
+    whitelist.21 = ^etcd_disk_wal_fsync_duration_seconds_bucket$
 
 
     # Audit logs
@@ -1280,7 +1351,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.14.284
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1447,7 +1518,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.14.284
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1582,7 +1653,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.14.284
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
         securityContext:
           privileged: true
           runAsUser: 0
