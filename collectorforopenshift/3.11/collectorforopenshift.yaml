@@ -202,7 +202,9 @@ data:
 
     # http server gives access to two endpoints
     # /healthz
-    # /metrics
+    # /metrics/json
+    # /metrics/prometheus
+    # httpServerBinding = 0.0.0.0:11888
     httpServerBinding =
 
     # telemetry report endpoint, set it to empty string to disable telemetry
