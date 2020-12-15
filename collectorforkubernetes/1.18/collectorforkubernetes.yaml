@@ -1,13 +1,9 @@
 apiVersion: v1
-kind: Project
+kind: Namespace
 metadata:
   labels:
-    app: collectorforopenshift
-  name: collectorforopenshift
-  annotations:
-    openshift.io/node-selector: ''
-    openshift.io/description: 'Monitoring OpenShift in Splunk, built by Outcold Solutions'
-    openshift.io/display-name: 'Collector for OpenShift'
+    app: collectorforkubernetes
+  name: collectorforkubernetes
 ---
 
 apiVersion: apiextensions.k8s.io/v1
@@ -29,61 +25,36 @@ spec:
     singular: configuration
     kind: Configuration
 
-
----
-apiVersion: scheduling.k8s.io/v1beta1
-kind: PriorityClass
-metadata:
-  name: collectorforopenshift-critical
-value: 1000000000
----
-kind: SecurityContextConstraints
-apiVersion: security.openshift.io/v1
-metadata:
-  name: collectorforopenshift
-allowHostDirVolumePlugin: true
-allowHostIPC: true
-allowHostNetwork: true
-allowHostPID: true
-allowHostPorts: true
-allowPrivilegeEscalation: true
-allowPrivilegedContainer: true
-readOnlyRootFilesystem: false
-allowedCapabilities:
-  - '*'
-allowedUnsafeSysctls:
-  - '*'
-fsGroup:
-  type: RunAsAny
-runAsUser:
-  type: RunAsAny
-seLinuxContext:
-  type: RunAsAny
-supplementalGroups:
-  type: RunAsAny
-seccompProfiles:
-  - '*'
-users:
-  - system:serviceaccount:collectorforopenshift:collectorforopenshift
-volumes:
-  - '*'
-
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
-    app: collectorforopenshift
-  name: collectorforopenshift
-  namespace: collectorforopenshift
+    app: collectorforkubernetes
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
+
 ---
-apiVersion: v1
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: collectorforkubernetes-critical
+value: 1000000000
+
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app: collectorforopenshift
-  name: collectorforopenshift
+    app: collectorforkubernetes
+  name: collectorforkubernetes
 rules:
+- apiGroups: ['extensions']
+  resources: ['podsecuritypolicies']
+  verbs:     ['use']
+  resourceNames:
+  - privileged
 - apiGroups:
   - ""
   - apps
@@ -92,26 +63,17 @@ rules:
   - monitoring.coreos.com
   - etcd.database.coreos.com
   - vault.security.coreos.com
-  - apps.openshift.io
-  - build.openshift.io
-  - operator.openshift.io
-  - tuned.openshift.io
-  - operators.coreos.com
   - certmanager.k8s.io
   - kafka.strimzi.io
   - org.eclipse.che
   - dynatrace.com
-  - template.openshift.io
   - nats.io
   - syndesis.io
   - collectord.io
   resources:
   - alertmanagers
-  - buildconfigs
-  - builds
   - cronjobs
   - daemonsets
-  - deploymentconfigs
   - deployments
   - endpoints
   - events
@@ -130,21 +92,13 @@ rules:
   - vaultservices
   - etcdclusters
   - challenges
-  - networks
-  - tuneds
-  - dnses
-  - catalogsources
-  - configmaps
-  - clusterserviceversions
   - kafkas
   - checlusters
   - oneagents
-  - templateinstances
   - natsclusters
   - syndesises
   - persistentvolumeclaims
   - configurations
-  - dns
   verbs:
   - get
   - list
@@ -156,37 +110,39 @@ rules:
   apiGroups: []
   resources: []
 ---
-apiVersion: v1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    app: collectorforopenshift
-  name: collectorforopenshift
-  namespace: collectorforopenshift
+    app: collectorforkubernetes
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
 roleRef:
+  apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: collectorforopenshift
+  name: collectorforkubernetes
 subjects:
   - kind: ServiceAccount
-    name: collectorforopenshift
-    namespace: collectorforopenshift
+    name: collectorforkubernetes
+    namespace: collectorforkubernetes
+
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: collectorforopenshift
-  namespace: collectorforopenshift
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
   labels:
-    app: collectorforopenshift
+    app: collectorforkubernetes
 data:
   001-general.conf: |
     # The general configuration is used for all deployments
     #
-    # Run collector with the flag `-conf` and specify location of the configuration files.
+    # Run collector with the flag -conf and specify location of the configuration files.
     #
     # You can override all the values using environment variables with the format like
     #   COLLECTOR__<ANYNAME>=<section>__<key>=<value>
-    # As an example you can set `dataPath` in the `[general]` section as
+    # As an example you can set dataPath in [general] section as
     #   COLLECTOR__DATAPATH=general__dataPath=C:\\some\\path\\data.db
     # This parameter can be configured using -env-override, set it to empty string to disable this feature
 
@@ -240,10 +196,10 @@ data:
 
     # Include custom fields to attach to every event, in example below every event sent to Splunk will hav
     # indexed field my_environment=dev. Fields names should match to ^[a-z][_a-z0-9]*$
-    # Better way to configure that is to specify labels for OpenShift Nodes.
+    # Better way to configure that is to specify labels for Kubernetes Nodes.
     # ; fields.my_environment = dev
     # Identify the cluster if you are planning to monitor multiple clusters
-    fields.openshift_cluster = -
+    fields.kubernetes_cluster = -
 
     # Include EC2 Metadata (see list of possible fields https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html)
     # Should be in format ec2Metadata.{desired_field_name} = {url path to read the value}
@@ -291,7 +247,7 @@ data:
     # whitelist or blacklist the metrics
     whitelist.1 = ^file_input_open$
     whitelist.2 = ^file_input_read_bytes$
-    whitelist.3 = ^openshift_handlers$
+    whitelist.3 = ^kubernetes_handlers$
     whitelist.4 = ^pipe$
     whitelist.5 = ^pipelines_num$
     whitelist.6 = ^splunk_post_bytes_sum.*$
@@ -338,7 +294,6 @@ data:
 
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
-
     volumesRootDir = /rootfs/var/lib/kubelet/
 
     # You can attach annotations as a metadata, using the format
@@ -350,7 +305,7 @@ data:
 
     # watch for changes (annotations) in the objects
     watch.namespaces = v1/namespace
-    watch.deploymentconfigs = apis/v1/apps.openshift.io/deploymentconfig
+    watch.deployments = apps/v1/deployment
     watch.configurations =  collectord.io/v1/configuration
 
 
@@ -364,16 +319,13 @@ data:
     disabled = false
 
     # override type
-    type = openshift_prometheus
+    type = kubernetes_prometheus
 
     # specify Splunk index
     index =
 
     # how often to collect prometheus metrics
     interval = 60s
-
-    # request timeout
-    timeout = 60s
 
     # include metrics help with the events
     includeHelp = true
@@ -472,7 +424,7 @@ data:
     # all pipelines, because just some events have incorrect index
     dedicatedClientPerIndex = true
     # in case if some indexes aren't used anymore, how often to destroy the dedicated client
-    dedicatedClientCleanPeriod = 24h
+    # dedicatedClientCleanPeriod = 24h
     # possible values: RedirectToDefault, Drop, Retry
     incorrectIndexBehavior = RedirectToDefault
 
@@ -483,7 +435,7 @@ data:
     threads = 1
 
     # if you want to exclude some preindexed fields from events
-    # excludeFields.openshift_pod_ip = true
+    # excludeFields.kubernetes_pod_ip = true
 
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
@@ -528,6 +480,12 @@ data:
     timeout = 1m
 
 
+    [general.containerd]
+
+    runtimePath = /rootfs/var/run/containerd
+    namespace = k8s.io
+
+
     # cgroup input
     [input.system_stats]
 
@@ -545,8 +503,8 @@ data:
     statsInterval = 30s
 
     # override type
-    type.host = openshift_stats_v2_host
-    type.cgroup = openshift_stats_v2_cgroup
+    type.host = kubernetes_stats_v2_host
+    type.cgroup = kubernetes_stats_v2_cgroup
 
     # specify Splunk index
     index.host =
@@ -570,7 +528,7 @@ data:
     statsInterval = 60s
 
     # override type
-    type = openshift_proc_stats_v2
+    type = kubernetes_proc_stats_v2
 
     # specify Splunk index
     index.host =
@@ -599,7 +557,7 @@ data:
     statsInterval = 30s
 
     # override type
-    type = openshift_net_stats_v2
+    type = kubernetes_net_stats_v2
 
     # specify Splunk index
     index.host =
@@ -623,7 +581,7 @@ data:
     statsInterval = 30s
 
     # override type
-    type = openshift_net_socket_table
+    type = kubernetes_net_socket_table
 
     # specify Splunk index
     index.host =
@@ -648,7 +606,7 @@ data:
     statsInterval = 30s
 
     # override type
-    type = openshift_mount_stats
+    type = kubernetes_mount_stats
 
     # specify Splunk index
     index =
@@ -684,7 +642,7 @@ data:
     verboseFields = false
 
     # override type
-    type = openshift_logs
+    type = kubernetes_logs
 
     # specify Splunk index
     index =
@@ -749,7 +707,7 @@ data:
     verboseFields = false
 
     # override type
-    type = openshift_logs
+    type = kubernetes_logs
 
     # specify Splunk index
     index =
@@ -780,6 +738,149 @@ data:
     tooNewEvents =
 
 
+    # Host logs. Input syslog(.\d+)? files
+    [input.files::syslog]
+
+    # disable host level logs
+    disabled = false
+
+    # root location of docker files
+    path = /rootfs/var/log/
+
+    # regex matching pattern
+    match = ^(syslog|messages)(.\d+)?$
+
+    # limit search only on one level
+    recursive = false
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    # override type
+    type = kubernetes_host_logs
+
+    # specify Splunk index
+    index =
+
+    # field extraction
+    extraction = ^(?P<timestamp>[A-Za-z]+\s+\d+\s\d+:\d+:\d+)\s(?P<syslog_hostname>[^\s]+)\s(?P<syslog_component>[^:\[]+)(\[(?P<syslog_pid>\d+)\])?: (.+)$
+
+    # timestamp field
+    timestampField = timestamp
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat = Jan 2 15:04:05
+
+    # Adjust date, if month/day aren't set in format
+    timestampSetMonth = false
+    timestampSetDay = false
+
+    # timestamp location (if not defined by format)
+    timestampLocation = Local
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # Blacklisting and whitelisting the logs
+    # whitelist = ^regexp$
+    # blacklist = ^regexp$
+
+
+    # Host logs. Input all *.log(.\d+)? files
+    [input.files::logs]
+
+    # disable host level logs
+    disabled = false
+
+    # root location of log files
+    path = /rootfs/var/log/
+
+    # regex matching pattern
+    match = ^(([\w\-.]+\.log(.[\d\-]+)?)|(docker))$
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    # override type
+    type = kubernetes_host_logs
+
+    # specify Splunk index
+    index =
+
+    # field extraction
+    extraction =
+
+    # timestamp field
+    timestampField =
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat =
+
+    # timestamp location (if not defined by format)
+    timestampLocation =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # Blacklisting and whitelisting the logs
+    # whitelist = ^regexp$
+    # blacklist = ^regexp$
 
 
     [input.journald]
@@ -794,8 +895,12 @@ data:
     # when reach end of journald, how often to pull
     pollingInterval = 250ms
 
+    # if you don't want to forward journald from the beginning,
+    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
+    startFromRel =
+
     # override type
-    type = openshift_host_logs
+    type = kubernetes_host_logs
 
     # specify Splunk index
     index =
@@ -851,42 +956,13 @@ data:
     patternRegex = ^[^\s]
 
 
-    # Fixing multi line events for OpenShift containers
-    [pipe.join::ose-service-catalog-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-service-catalog:.*$
+    # Kube API Server has trace messages with multi line events
+    [pipe.join::kube-apiserver]
+    disabled = false
+    matchRegex.kubernetes_container_image = ^gcr.io/google_containers/kube-apiserver-.*$
     matchRegex.stream = stderr
     patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
 
-    [pipe.join::ose-docker-registry-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-docker-registry:.*$
-    matchRegex.stream = stderr
-    patternRegex = ^time="[^"]+"\s+level=[^\s]+\s+msg=
-
-    [pipe.join::ose-docker-registry-stdout]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-docker-registry:.*$
-    matchRegex.stream = stdout
-    patternRegex = ^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+-
-
-    [pipe.join::ose-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose:.*$
-    matchRegex.stream = stderr
-    patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
-
-    [pipe.join::ose-stdout]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose:.*$
-    matchRegex.stream = stdout
-    patternRegex = ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z\s+
-
-    [pipe.join::ose-haproxy-router-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-haproxy-router:.*$
-    matchRegex.stream = stderr
-    patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
 
     # (depricated, use annotations for settings up join rules)
     # Define special event join patterns for matched events
@@ -905,15 +981,15 @@ data:
     disabled = false
 
     # override type
-    type = openshift_prometheus
+    type = kubernetes_prometheus
 
     # specify Splunk index
     index =
 
-    # Override host (environment variables are supported)
+    # override host (environment variables are supported, by default Kubernetes node name is used)
     host = ${KUBERNETES_NODENAME}
 
-    # Override source
+    # override source
     source = kubelet
 
     # how often to collect prometheus metrics
@@ -922,8 +998,12 @@ data:
     # request timeout
     timeout = 60s
 
-    # prometheus endpoint
-    endpoint = https://127.0.0.1:10250/metrics
+    # Prometheus endpoint, multiple values can be specified, collector tries them in order till finding the first
+    # working endpoint.
+    # At first trying to get it through proxy
+    endpoint.1proxy = https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/api/v1/nodes/${KUBERNETES_NODENAME}/proxy/metrics
+    # In case if cannot get it through proxy, trying localhost
+    endpoint.2http = http://127.0.0.1:10255/metrics
 
     # token for "Authorization: Bearer $(cat tokenPath)"
     tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -938,28 +1018,27 @@ data:
     insecure = true
 
     # include metrics help with the events
-    # can be useful to explore prometheus metrics
     includeHelp = false
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
     
-    whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^kubelet_runtime_operations_latency_microseconds$
-    whitelist.3 = ^kubelet_docker_operations_latency_microseconds_sum$
-    whitelist.4 = ^kubelet_network_plugin_operations_latency_microseconds_sum$
-    whitelist.5 = ^kubelet_cgroup_manager_latency_microseconds_sum$
+    whitelist.1 = ^kubernetes_build_info$
+    whitelist.2 = ^kubelet_runtime_operations_duration_seconds_sum$
+    whitelist.3 = ^kubelet_docker_operations_duration_seconds_sum$
+    whitelist.4 = ^kubelet_network_plugin_operations_duration_seconds_sum$
+    whitelist.5 = ^kubelet_cgroup_manager_duration_seconds_sum$
     whitelist.6 = ^storage_operation_duration_seconds_sum$
-    whitelist.7 = ^kubelet_docker_operations_errors$
-    whitelist.8 = ^kubelet_runtime_operations_errors$
+    whitelist.7 = ^kubelet_docker_operations_errors_total$
+    whitelist.8 = ^kubelet_runtime_operations_errors_total$
     whitelist.9 = ^rest_client_requests_total$
     whitelist.10 = ^process_cpu_seconds_total$
     whitelist.11 = ^process_resident_memory_bytes$
     whitelist.12 = ^process_virtual_memory_bytes$
-    whitelist.13 = ^kubelet_volume_stats_.+$
+    whitelist.13 = ^rest_client_request_duration_seconds_sum$
+    whitelist.14 = ^kubelet_volume_stats_.+$
     
-
 
     # [diagnostics::node-entropy]
     # settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
@@ -970,16 +1049,16 @@ data:
   003-daemonset-master.conf: |
     [input.prometheus::kubernetes-api]
 
-    # disable prometheus kubernetes-api input
+    # disable prometheus kubernetes-api metrics
     disabled = false
 
     # override type
-    type = openshift_prometheus
+    type = kubernetes_prometheus
 
     # specify Splunk index
     index =
 
-    # override host
+    # override host (environment variables are supported, by default Kubernetes node name is used)
     host = ${KUBERNETES_NODENAME}
 
     # override source
@@ -992,9 +1071,9 @@ data:
     timeout = 60s
 
     # prometheus endpoint
-    # at first trying to get it from localhost (that way avoiding load balancer, if multiple)
+    # at first trying to get it from localhost (avoiding load balancer, if multiple api servers)
+    endpoint.1localhost = https://127.0.0.1:6443/metrics
     # as fallback using proxy
-    endpoint.1localhost = https://127.0.0.1:8443/metrics
     endpoint.2kubeapi = https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/metrics
 
     # token for "Authorization: Bearer $(cat tokenPath)"
@@ -1016,22 +1095,25 @@ data:
     output =
 
     
-    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.1 = ^kubernetes_build_info$
     whitelist.2 = ^authenticated_user_requests$
-    whitelist.3 = ^apiserver_request_count$
+    whitelist.3 = ^apiserver_request_total$
     whitelist.4 = ^process_cpu_seconds_total$
     whitelist.5 = ^process_resident_memory_bytes$
     whitelist.6 = ^process_virtual_memory_bytes$
+    whitelist.7 = ^rest_client_request_duration_seconds_sum$
+    whitelist.8 = ^rest_client_requests_total$
     
 
 
-    [input.prometheus::controller]
+    # This configuration works if scheduled is bind to the localhost:10251
+    [input.prometheus::scheduler]
 
-    # disable prometheus controller metrics
+    # disable prometheus scheduler metrics
     disabled = false
 
     # override type
-    type = openshift_prometheus
+    type = kubernetes_prometheus
 
     # specify Splunk index
     index =
@@ -1040,7 +1122,7 @@ data:
     host = ${KUBERNETES_NODENAME}
 
     # override source
-    source = controller
+    source = scheduler
 
     # how often to collect prometheus metrics
     interval = 60s
@@ -1049,17 +1131,16 @@ data:
     timeout = 60s
 
     # prometheus endpoint
-    endpoint.https = https://127.0.0.1:8444/metrics
+    endpoint = http://127.0.0.1:10251/metrics
 
     # token for "Authorization: Bearer $(cat tokenPath)"
-    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+    tokenPath =
 
     # server certificate for certificate validation
     certPath =
 
     # client certificate for authentication
     clientCertPath =
-    clientKeyPath =
 
     # Allow invalid SSL server certificate
     insecure = true
@@ -1071,16 +1152,73 @@ data:
     output =
 
     
-    whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^scheduler_e2e_scheduling_latency_microseconds_sum$
-    whitelist.3 = ^scheduler_binding_latency_microseconds_sum$
-    whitelist.4 = ^scheduler_scheduling_algorithm_latency_microseconds_sum$
-    whitelist.5 = ^process_cpu_seconds_total$
-    whitelist.6 = ^process_resident_memory_bytes$
-    whitelist.7 = ^process_virtual_memory_bytes$
-    whitelist.8 = ^node_collector_zone_size$
-    whitelist.9 = ^node_collector_zone_health$
-    whitelist.10 = ^node_collector_unhealthy_nodes_in_zone$
+    whitelist.1 = ^kubernetes_build_info$
+    whitelist.2 = ^scheduler_e2e_scheduling_duration_seconds_sum$
+    whitelist.3 = ^scheduler_binding_duration_seconds_sum$
+    whitelist.4 = ^scheduler_scheduling_algorithm_duration_seconds_sum$
+    whitelist.5 = ^rest_client_request_duration_seconds_sum$
+    whitelist.6 = ^rest_client_requests_total$
+    whitelist.7 = ^process_cpu_seconds_total$
+    whitelist.8 = ^process_resident_memory_bytes$
+    whitelist.9 = ^process_virtual_memory_bytes$
+    
+
+
+    # This configuration works if controller-manager is bind to the localhost:10252
+    [input.prometheus::controller-manager]
+
+    # disable prometheus controller-manager metrics
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # specify Splunk index
+    index =
+
+    # override host
+    host = ${KUBERNETES_NODENAME}
+
+    # override source
+    source = controller-manager
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # request timeout
+    timeout = 60s
+
+    # prometheus endpoint
+    endpoint = http://127.0.0.1:10252/metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath =
+
+    # server certificate for certificate validation
+    certPath =
+
+    # client certificate for authentication
+    clientCertPath =
+
+    # Allow invalid SSL server certificate
+    insecure = false
+
+    # include metrics help with the events
+    includeHelp = false
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    
+    whitelist.1 = ^kubernetes_build_info$
+    whitelist.2 = ^node_collector_zone_size$
+    whitelist.3 = ^node_collector_zone_health$
+    whitelist.4 = ^node_collector_unhealthy_nodes_in_zone$
+    whitelist.5 = ^rest_client_request_duration_seconds_sum$
+    whitelist.6 = ^rest_client_requests_total$
+    whitelist.7 = ^process_cpu_seconds_total$
+    whitelist.8 = ^process_resident_memory_bytes$
+    whitelist.9 = ^process_virtual_memory_bytes$
     
 
 
@@ -1090,7 +1228,7 @@ data:
     disabled = false
 
     # override type
-    type = openshift_prometheus
+    type = kubernetes_prometheus
 
     # specify Splunk index
     index =
@@ -1104,24 +1242,22 @@ data:
     # how often to collect prometheus metricd
     interval = 60s
 
+    # request timeout
+    timeout = 60s
+
     # prometheus endpoint
-
-    endpoint.https = https://:9979/metrics
-
+    endpoint.http = http://:2379/metrics
+    endpoint.https = https://:2379/metrics
 
     # token for "Authorization: Bearer $(cat tokenPath)"
     tokenPath =
 
     # server certificate for certificate validation
-
-    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/metric-ca.crt
-
+    certPath = /rootfs/etc/kubernetes/pki/etcd/ca.crt
 
     # client certificate for authentication
-
-    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.crt
-    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.key
-
+    clientCertPath = /rootfs/etc/kubernetes/pki/apiserver-etcd-client.crt
+    clientKeyPath = /rootfs/etc/kubernetes/pki/apiserver-etcd-client.key
 
     # Allow invalid SSL server certificate
     insecure = true
@@ -1154,78 +1290,19 @@ data:
     whitelist.20 = ^etcd_disk_backend_commit_duration_seconds_bucket$
     whitelist.21 = ^etcd_disk_wal_fsync_duration_seconds_bucket$
 
-
-    # Audit logs
-    [input.files::audit-logs]
-
-    # disable host level logs
-    disabled = false
-
-
-    # root location of for audit logs
-    path = /rootfs/var/log/kube-apiserver/
-
-    # glob matching files
-    glob = audit-*.log
-
-
-    # files are read using polling schema, when reach the EOF how often to check if files got updated
-    pollingInterval = 250ms
-
-    # how often o look for the new files under logs path
-    walkingInterval = 5s
-
-    # include verbose fields in events (file offset)
-    verboseFields = false
-
-    # override type
-    type = openshift_host_logs
-
-    # specify Splunk index
-    index =
-
-    # field extraction
-    extraction =
-
-    # timestamp field
-    timestampField =
-
-    # format for timestamp
-    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
-    timestampFormat =
-
-    # timestamp location (if not defined by format)
-    timestampLocation =
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # configure default thruput per second for this files group
-    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
-    # from the files in this group to 128Kb per second.
-    thruputPerSecond =
-
-    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
-    # older than 7 days
-    tooOldEvents =
-
-    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
-    tooNewEvents =
-
-
   004-addon.conf: |
     [general]
+
     # addons can be run in parallel with agents
     addon = true
 
-
     [input.kubernetes_events]
 
-    # disable collecting kubernetes events
+    # disable events
     disabled = false
 
     # override type
-    type = openshift_events
+    type = kubernetes_events
 
     # specify Splunk index
     index =
@@ -1255,7 +1332,7 @@ data:
     namespace =
 
     # override type
-    type = openshift_objects
+    type = kubernetes_objects
 
     # specify Splunk index
     index =
@@ -1263,16 +1340,17 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
+
 ---
-
 apiVersion: apps/v1
-
 kind: DaemonSet
 metadata:
-  name: collectorforopenshift
-  namespace: collectorforopenshift
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
   labels:
-    app: collectorforopenshift
+    app: collectorforkubernetes
 spec:
   # Default updateStrategy is OnDelete. For collector RollingUpdate is suitable
   # When you update configuration
@@ -1281,21 +1359,21 @@ spec:
 
   selector:
     matchLabels:
-      daemon: collectorforopenshift
+      daemon: collectorforkubernetes
 
   template:
     metadata:
-      name: collectorforopenshift
+      name: collectorforkubernetes
       labels:
-        daemon: collectorforopenshift
+        daemon: collectorforkubernetes
       
     spec:
       
-      priorityClassName: collectorforopenshift-critical
+      priorityClassName: collectorforkubernetes-critical
       
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
-      serviceAccountName: collectorforopenshift
+      serviceAccountName: collectorforkubernetes
       # We run this DaemonSet only for Non-Masters
       affinity:
         nodeAffinity:
@@ -1310,13 +1388,15 @@ spec:
       - operator: "Exists"
         effect: "NoExecute"
       containers:
-      - name: collectorforopenshift
-        # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
+      - name: collectorforkubernetes
+        # Collector version
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.16.350
+        imagePullPolicy: Always
         securityContext:
-          privileged: true
           runAsUser: 0
+          privileged: true
         # Define your resources if you need. Defaults should be fine for most.
+        # You can lower or increase based on your hosts.
         resources:
           limits:
             cpu: 2
@@ -1335,10 +1415,10 @@ spec:
               fieldPath: metadata.name
         volumeMounts:
         # We store state in /data folder (file positions)
-        - name: collectorforopenshift-state
+        - name: collectorforkubernetes-state
           mountPath: /data
         # Configuration file deployed with ConfigMap
-        - name: collectorforopenshift-config
+        - name: collectorforkubernetes-config
           mountPath: /config/
           readOnly: true
         # Cgroup filesystem to get metrics
@@ -1362,6 +1442,10 @@ spec:
         - name: crio-unix-socket
           mountPath: /rootfs/var/run/crio/
           readOnly: true
+        # Containerd socket (if using containerd runtime)
+        - name: containerd-unix-socket
+          mountPath: /rootfs/var/run/containerd/
+          readOnly: true
         # Host logs location (including CRI-O logs)
         - name: logs
           mountPath: /rootfs/var/log/
@@ -1370,12 +1454,10 @@ spec:
           mountPath: /rootfs/run/log/
           readOnly: true
         # Application logs
-
         - name: volumes-root
           mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
           mountPropagation: HostToContainer
-
         # correct timezone
         - name: localtime
           mountPath: /etc/localtime
@@ -1383,9 +1465,9 @@ spec:
       volumes:
       # We store state directly on host, change this location, if
       # your persistent volume is somewhere else
-      - name: collectorforopenshift-state
+      - name: collectorforkubernetes-state
         hostPath:
-          path: /var/lib/collectorforopenshift/data/
+          path: /var/lib/collectorforkubernetes/data/
       # Location of docker root (for container logs and metadata)
       - name: docker-root
         hostPath:
@@ -1413,57 +1495,56 @@ spec:
       - name: crio-unix-socket
         hostPath:
           path: /var/run/crio/
-      # Location for origin mounts, to autodiscover application logs
-
+      # containerd socket (if using containerd runtime)
+      - name: containerd-unix-socket
+        hostPath:
+          path: /var/run/containerd/
+      # Location for kubelet mounts, to autodiscover application logs
       - name: volumes-root
         hostPath:
           path: /var/lib/kubelet/
-
       # correct timezone
       - name: localtime
         hostPath:
           path: /etc/localtime
       # configuration from ConfigMap
-      - name: collectorforopenshift-config
+      - name: collectorforkubernetes-config
         configMap:
-          name: collectorforopenshift
+          name: collectorforkubernetes
           items:
           - key: 001-general.conf
             path: 001-general.conf
           - key: 002-daemonset.conf
             path: 002-daemonset.conf
 ---
-
 apiVersion: apps/v1
-
 kind: DaemonSet
 metadata:
-  name: collectorforopenshift-master
-  namespace: collectorforopenshift
+  name: collectorforkubernetes-master
+  namespace: collectorforkubernetes
   labels:
-    app: collectorforopenshift
+    app: collectorforkubernetes
 spec:
   updateStrategy:
     type: RollingUpdate
 
   selector:
     matchLabels:
-      daemon: collectorforopenshift
+      daemon: collectorforkubernetes
 
   template:
     metadata:
-      name: collectorforopenshift-master
+      name: collectorforkubernetes-master
       labels:
-        daemon: collectorforopenshift
+        daemon: collectorforkubernetes
       
     spec:
       
-      priorityClassName: collectorforopenshift-critical
+      priorityClassName: collectorforkubernetes-critical
       
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
-      serviceAccountName: collectorforopenshift
-      # Deploy only on master
+      serviceAccountName: collectorforkubernetes
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -1477,14 +1558,15 @@ spec:
       - operator: "Exists"
         effect: "NoExecute"
       containers:
-      - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
+      - name: collectorforkubernetes
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.16.350
+        imagePullPolicy: Always
         securityContext:
-          privileged: true
           runAsUser: 0
+          privileged: true
         resources:
           limits:
-            cpu: 1
+            cpu: 2
             memory: 512Mi
           requests:
             cpu: 200m
@@ -1499,9 +1581,9 @@ spec:
             fieldRef:
               fieldPath: metadata.name
         volumeMounts:
-        - name: collectorforopenshift-state
+        - name: collectorforkubernetes-state
           mountPath: /data
-        - name: collectorforopenshift-config
+        - name: collectorforkubernetes-config
           mountPath: /config/
           readOnly: true
         - name: cgroup
@@ -1520,28 +1602,29 @@ spec:
         - name: crio-unix-socket
           mountPath: /rootfs/var/run/crio/
           readOnly: true
+        - name: containerd-unix-socket
+          mountPath: /rootfs/var/run/containerd/
+          readOnly: true
         - name: logs
           mountPath: /rootfs/var/log/
           readOnly: true
         - name: run-logs
           mountPath: /rootfs/run/log/
           readOnly: true
-
-        - name: etcd-certs
-          mountPath: /rootfs/etc/kubernetes/static-pod-resources/etcd-member/
+        - name: k8s-certs
+          mountPath: /rootfs/etc/kubernetes/pki/
           readOnly: true
-        - name: volumes-root
+        - name: kubelet-root
           mountPath: /rootfs/var/lib/kubelet/
           readOnly: true
           mountPropagation: HostToContainer
-
         - name: localtime
           mountPath: /etc/localtime
           readOnly: true
       volumes:
-      - name: collectorforopenshift-state
+      - name: collectorforkubernetes-state
         hostPath:
-          path: /var/lib/collectorforopenshift/data/
+          path: /var/lib/collectorforkubernetes/data/
       - name: docker-logs
         hostPath:
           path: /var/lib/docker/
@@ -1563,20 +1646,21 @@ spec:
       - name: crio-unix-socket
         hostPath:
           path: /var/run/crio/
-
-      - name: etcd-certs
+      - name: containerd-unix-socket
         hostPath:
-          path: /etc/kubernetes/static-pod-resources/etcd-member/
-      - name: volumes-root
+          path: /var/run/containerd/
+      - name: k8s-certs
+        hostPath:
+          path: /etc/kubernetes/pki/
+      - name: kubelet-root
         hostPath:
           path: /var/lib/kubelet/
-
       - name: localtime
         hostPath:
           path: /etc/localtime
-      - name: collectorforopenshift-config
+      - name: collectorforkubernetes-config
         configMap:
-          name: collectorforopenshift
+          name: collectorforkubernetes
           items:
           - key: 001-general.conf
             path: 001-general.conf
@@ -1585,37 +1669,38 @@ spec:
           - key: 003-daemonset-master.conf
             path: 003-daemonset-master.conf
 ---
-
 apiVersion: apps/v1
-
 kind: Deployment
 metadata:
-  name: collectorforopenshift-addon
-  namespace: collectorforopenshift
+  name: collectorforkubernetes-addon
+  namespace: collectorforkubernetes
   labels:
-    app: collectorforopenshift
+    app: collectorforkubernetes
 spec:
   replicas: 1
+
   selector:
     matchLabels:
-      daemon: collectorforopenshift
+      daemon: collectorforkubernetes
+
   template:
     metadata:
-      name: collectorforopenshift-addon
+      name: collectorforkubernetes-addon
       labels:
-        daemon: collectorforopenshift
+        daemon: collectorforkubernetes
       
     spec:
       
-      priorityClassName: collectorforopenshift-critical
+      priorityClassName: collectorforkubernetes-critical
       
-      serviceAccountName: collectorforopenshift
+      serviceAccountName: collectorforkubernetes
       containers:
-      - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
+      - name: collectorforkubernetes
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.16.350
+        imagePullPolicy: Always
         securityContext:
-          privileged: true
           runAsUser: 0
+          privileged: true
         resources:
           limits:
             cpu: 500m
@@ -1633,18 +1718,18 @@ spec:
             fieldRef:
               fieldPath: metadata.name
         volumeMounts:
-        - name: collectorforopenshift-state
+        - name: collectorforkubernetes-state
           mountPath: /data
-        - name: collectorforopenshift-config
+        - name: collectorforkubernetes-config
           mountPath: /config/
           readOnly: true
       volumes:
-      - name: collectorforopenshift-state
+      - name: collectorforkubernetes-state
         hostPath:
-          path: /var/lib/collectorforopenshift/data/
-      - name: collectorforopenshift-config
+          path: /var/lib/collectorforkubernetes/data/
+      - name: collectorforkubernetes-config
         configMap:
-          name: collectorforopenshift
+          name: collectorforkubernetes
           items:
           - key: 001-general.conf
             path: 001-general.conf

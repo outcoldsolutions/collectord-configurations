@@ -9,6 +9,7 @@ metadata:
     openshift.io/description: 'Monitoring OpenShift in Splunk, built by Outcold Solutions'
     openshift.io/display-name: 'Collector for OpenShift'
 ---
+
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -24,6 +25,7 @@ spec:
     plural: configurations
     singular: configuration
     kind: Configuration
+
 
 ---
 apiVersion: v1
@@ -229,6 +231,36 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+
+    # forward internal collectord metrics
+    [input.collectord_metrics]
+
+    # disable collectord internal metrics
+    disabled = false
+
+    # override type
+    type = kubernetes_prometheus
+
+    # how often to collect internal metrics
+    interval = 1m
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # whitelist or blacklist the metrics
+    whitelist.1 = ^file_input_open$
+    whitelist.2 = ^file_input_read_bytes$
+    whitelist.3 = ^openshift_handlers$
+    whitelist.4 = ^pipe$
+    whitelist.5 = ^pipelines_num$
+    whitelist.6 = ^splunk_post_bytes_sum.*$
+    whitelist.7 = ^splunk_post_events_count_sum.*$
+    whitelist.8 = ^splunk_post_failed_requests$
+    whitelist.9 = ^splunk_post_message_max_lag_seconds_bucket.*$
+    whitelist.10 = ^splunk_post_requests_seconds_sum.*$
+    whitelist.11 = ^splunk_post_retries_required_sum.*$
+
+
     # connection to kubernetes api
     [general.kubernetes]
 
@@ -310,6 +342,10 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # Include an Authorization header for the prometheus scrapper
+    # When configuring scrapping with collectord using annotations use prometheus.1-AuthorizationKey=key1
+    # authorization.key1 = Bearer FOO
 
 
     # Splunk output
@@ -639,6 +675,13 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # Blacklisting and whitelisting the logs
+    # whitelist = ^regexp$
+    # blacklist = ^regexp$
+
 
     # Application Logs
     [input.app_logs]
@@ -764,6 +807,13 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # Blacklisting and whitelisting the logs
+    # whitelist = ^regexp$
+    # blacklist = ^regexp$
+
 
     # Host logs. Input all *.log(.\d+)? files
     [input.files::logs]
@@ -826,6 +876,13 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # Blacklisting and whitelisting the logs
+    # whitelist = ^regexp$
+    # blacklist = ^regexp$
+
 
 
     [input.journald]
@@ -869,6 +926,13 @@ data:
 
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # Blacklisting and whitelisting the logs
+    # whitelist = ^regexp$
+    # blacklist = ^regexp$
 
 
     # Pipe to join events (container logs only)
@@ -996,6 +1060,7 @@ data:
     whitelist.10 = ^process_cpu_seconds_total$
     whitelist.11 = ^process_resident_memory_bytes$
     whitelist.12 = ^process_virtual_memory_bytes$
+    whitelist.13 = ^kubelet_volume_stats_.+$
     
 
 
@@ -1351,7 +1416,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1518,7 +1583,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1653,7 +1718,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.15.300
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
         securityContext:
           privileged: true
           runAsUser: 0
