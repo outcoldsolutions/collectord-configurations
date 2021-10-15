@@ -136,6 +136,18 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    [license.client]
+    # point to the license located on the HTTP web server, or a hosted by the Collectord running as license server
+    url =
+    # basic authentication for the HTTP server
+    basicAuth =
+    # if SSL, ignore the certificate verification
+    insecure = false
+    # CA Path for the Server certificate
+    capath =
+    # CA Name fot the Server certificate
+    caname =
+
 
     # forward internal collectord metrics
     [input.collectord_metrics]
@@ -151,6 +163,9 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # specify Splunk index
+    index =
 
     # whitelist or blacklist the metrics
     whitelist.1 = ^file_input_open$
@@ -585,10 +600,6 @@ data:
     # by default every new event should start from not space symbol
     eventPattern = ^[^\s]
 
-    # Blacklisting and whitelisting the logs
-    # whitelist = ^regexp$
-    # blacklist = ^regexp$
-
 
     # Application Logs
     [input.app_logs]
@@ -718,8 +729,8 @@ data:
     eventPattern = ^[^\s]
 
     # Blacklisting and whitelisting the logs
-    # whitelist = ^regexp$
-    # blacklist = ^regexp$
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
 
 
     # Host logs. Input all *.log(.\d+)? files
@@ -787,8 +798,8 @@ data:
     eventPattern = ^[^\s]
 
     # Blacklisting and whitelisting the logs
-    # whitelist = ^regexp$
-    # blacklist = ^regexp$
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
 
 
     [input.journald]
@@ -841,8 +852,8 @@ data:
     eventPattern = ^[^\s]
 
     # Blacklisting and whitelisting the logs
-    # whitelist = ^regexp$
-    # blacklist = ^regexp$
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
 
 
     # Pipe to join events (container logs only)
@@ -1226,6 +1237,9 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
+
 
     [input.kubernetes_watch::pods]
 
@@ -1241,6 +1255,29 @@ data:
 
     # override type
     type = kubernetes_objects
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
+
+    [input.kubernetes_watch::resourcequota]
+    # disable events
+    disabled = false
+
+    # Set the timeout for how often watch request should refresh the whole list
+    refresh = 10m
+
+    apiVersion = v1
+    kind = ResourceQuota
+    namespace =
+
+    # override type
+    type = openshift_objects
 
     # specify Splunk index
     index =
@@ -1295,7 +1332,9 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.16.350
+        # ARM images are available with suffix -arm64
+        # image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370-arm64
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1461,7 +1500,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.16.350
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1595,7 +1634,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.16.350
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

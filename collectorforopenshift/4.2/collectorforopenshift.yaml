@@ -23,6 +23,10 @@ spec:
       schema:
         openAPIV3Schema:
           type: object
+          properties:
+            spec:
+              type: object
+              additionalProperties: true
   scope: Cluster
   names:
     plural: configurations
@@ -31,7 +35,7 @@ spec:
 
 
 ---
-apiVersion: scheduling.k8s.io/v1beta1
+apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: collectorforopenshift-critical
@@ -145,6 +149,7 @@ rules:
   - persistentvolumeclaims
   - configurations
   - dns
+  - resourcequotas
   verbs:
   - get
   - list
@@ -274,6 +279,17 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    [license.client]
+    # point to the license located on the HTTP web server, or a hosted by the Collectord running as license server
+    url =
+    # basic authentication for the HTTP server
+    basicAuth =
+    # if SSL, ignore the certificate verification
+    insecure = false
+    # CA Path for the Server certificate
+    capath =
+    # CA Name fot the Server certificate
+    caname =
 
     # forward internal collectord metrics
     [input.collectord_metrics]
@@ -282,13 +298,16 @@ data:
     disabled = false
 
     # override type
-    type = kubernetes_prometheus
+    type = openshift_prometheus
 
     # how often to collect internal metrics
     interval = 1m
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # specify Splunk index
+    index =
 
     # whitelist or blacklist the metrics
     whitelist.1 = ^file_input_open$
@@ -721,10 +740,6 @@ data:
     # by default every new event should start from not space symbol
     eventPattern = ^[^\s]
 
-    # Blacklisting and whitelisting the logs
-    # whitelist = ^regexp$
-    # blacklist = ^regexp$
-
 
     # Application Logs
     [input.app_logs]
@@ -831,7 +846,11 @@ data:
 
     # Blacklisting and whitelisting the logs
     # whitelist = ^regexp$
-    # blacklist = ^regexp$
+
+    # By default ignoring verbose hyperkube logs (all INFO messages)
+    blacklist.0 = ^I\d+.*$
+    # whitelist.0 = ^regexp$
+    # blacklist.1 = ^regexp$
 
 
     # Pipe to join events (container logs only)
@@ -1020,7 +1039,7 @@ data:
     
     whitelist.1 = ^(kubernetes|openshift)_build_info$
     whitelist.2 = ^authenticated_user_requests$
-    whitelist.3 = ^apiserver_request_count$
+    whitelist.3 = ^apiserver_request_total$
     whitelist.4 = ^process_cpu_seconds_total$
     whitelist.5 = ^process_resident_memory_bytes$
     whitelist.6 = ^process_virtual_memory_bytes$
@@ -1051,7 +1070,8 @@ data:
     timeout = 60s
 
     # prometheus endpoint
-    endpoint.https = https://127.0.0.1:8444/metrics
+    endpoint.https1 = https://:10257/metrics
+    endpoint.https2 = https://:8444/metrics
 
     # token for "Authorization: Bearer $(cat tokenPath)"
     tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -1108,7 +1128,8 @@ data:
 
     # prometheus endpoint
 
-    endpoint.https = https://:9979/metrics
+    endpoint.https1 = https://:9979/metrics
+    endpoint.https2 = https://:9978/metrics
 
 
     # token for "Authorization: Bearer $(cat tokenPath)"
@@ -1116,13 +1137,13 @@ data:
 
     # server certificate for certificate validation
 
-    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/metric-ca.crt
+    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/*-ca.crt
 
 
     # client certificate for authentication
 
-    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.crt
-    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-metric:etcd-*.key
+    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-*.crt
+    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-*.key
 
 
     # Allow invalid SSL server certificate
@@ -1214,6 +1235,10 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # Blacklisting and whitelisting the logs
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
+
 
   004-addon.conf: |
     [general]
@@ -1243,6 +1268,9 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
+
 
     [input.kubernetes_watch::pods]
 
@@ -1264,6 +1292,32 @@ data:
 
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
+
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
+
+    [input.kubernetes_watch::resourcequota]
+    # disable events
+    disabled = false
+
+    # Set the timeout for how often watch request should refresh the whole list
+    refresh = 10m
+
+    apiVersion = v1
+    kind = ResourceQuota
+    namespace =
+
+    # override type
+    type = openshift_objects
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
 
 ---
 
@@ -1314,7 +1368,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.17.370
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1480,7 +1534,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.17.370
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1614,7 +1668,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.16.350
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.17.370
         securityContext:
           privileged: true
           runAsUser: 0
