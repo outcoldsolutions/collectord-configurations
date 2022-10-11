@@ -326,7 +326,7 @@ data:
 
     # watch for changes (annotations) in the objects
     watch.namespaces = v1/namespace
-    watch.deploymentconfigs = apis/v1/apps.openshift.io/deploymentconfig
+    watch.deploymentconfigs = apps.openshift.io/v1/deploymentconfig
     watch.configurations =  collectord.io/v1/configuration
 
 
@@ -751,6 +751,11 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # Configure how long Collectord should keep the file descriptors open for files, that has not been forwarded yet
+    # When using PVC, and if pipeline is lagging behind, Collectord holding open fd for files, can cause long termination
+    # of pods, as kubelet cannot unmount the PVC volume from the system
+    maxHoldAfterClose = 1800s
+
 
     # Host logs. Input syslog(.\d+)? files
     [input.files::syslog]
@@ -784,6 +789,7 @@ data:
 
     # field extraction
     extraction = ^(?P<timestamp>[A-Za-z]+\s+\d+\s\d+:\d+:\d+)\s(?P<syslog_hostname>[^\s]+)\s(?P<syslog_component>[^:\[]+)(\[(?P<syslog_pid>\d+)\])?: (.+)$
+    # extractionMessageField =
 
     # timestamp field
     timestampField = timestamp
@@ -857,6 +863,7 @@ data:
 
     # field extraction
     extraction =
+    # extractionMessageField =
 
     # timestamp field
     timestampField =
@@ -1307,6 +1314,7 @@ data:
 
     # field extraction
     extraction =
+    # extractionMessageField =
 
     # timestamp field
     timestampField =
@@ -1467,7 +1475,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.17.370
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.18.381
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1634,7 +1642,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.17.370
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.18.381
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1769,7 +1777,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.17.370
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.18.381
         securityContext:
           privileged: true
           runAsUser: 0

@@ -741,6 +741,11 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # Configure how long Collectord should keep the file descriptors open for files, that has not been forwarded yet
+    # When using PVC, and if pipeline is lagging behind, Collectord holding open fd for files, can cause long termination
+    # of pods, as kubelet cannot unmount the PVC volume from the system
+    maxHoldAfterClose = 1800s
+
 
     # Host logs. Input syslog(.\d+)? files
     [input.files::syslog]
@@ -774,6 +779,7 @@ data:
 
     # field extraction
     extraction = ^(?P<timestamp>[A-Za-z]+\s+\d+\s\d+:\d+:\d+)\s(?P<syslog_hostname>[^\s]+)\s(?P<syslog_component>[^:\[]+)(\[(?P<syslog_pid>\d+)\])?: (.+)$
+    # extractionMessageField =
 
     # timestamp field
     timestampField = timestamp
@@ -847,6 +853,7 @@ data:
 
     # field extraction
     extraction =
+    extractionMessageField =
 
     # timestamp field
     timestampField =
@@ -1418,8 +1425,8 @@ spec:
       - name: collectorforkubernetes
         # Collector version
         # ARM images are available with suffix -arm64
-        # image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370-arm64
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370
+        # image: docker.io/outcoldsolutions/collectorforkubernetes:5.18.381-arm64
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.18.381
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1585,7 +1592,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.18.381
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1719,7 +1726,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.17.370
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.18.381
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
