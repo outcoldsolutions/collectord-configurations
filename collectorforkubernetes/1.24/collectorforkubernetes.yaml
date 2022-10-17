@@ -6,7 +6,7 @@ metadata:
   name: collectorforkubernetes
 ---
 
-apiVersion: apiextensions.k8s.io/v1beta1
+apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: configurations.collectord.io
@@ -16,6 +16,15 @@ spec:
     - name: v1
       served: true
       storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              additionalProperties: true
+            force:
+              type: boolean
   scope: Cluster
   names:
     plural: configurations
@@ -31,6 +40,81 @@ metadata:
   name: collectorforkubernetes
   namespace: collectorforkubernetes
 
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: collectorforkubernetes-critical
+value: 1000000000
+
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app: collectorforkubernetes
+  name: collectorforkubernetes
+rules:
+- apiGroups: ['extensions']
+  resources: ['podsecuritypolicies']
+  verbs:     ['use']
+  resourceNames:
+  - privileged
+- apiGroups:
+  - ""
+  - apps
+  - batch
+  - extensions
+  - collectord.io
+  - rbac.authorization.k8s.io
+  resources:
+  - alertmanagers
+  - cronjobs
+  - daemonsets
+  - deployments
+  - endpoints
+  - events
+  - jobs
+  - namespaces
+  - nodes
+  - nodes/metrics
+  - nodes/proxy
+  - pods
+  - replicasets
+  - replicationcontrollers
+  - scheduledjobs
+  - services
+  - statefulsets
+  - persistentvolumeclaims
+  - configurations
+  - resourcequotas
+  verbs:
+  - get
+  - list
+  - watch
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+  apiGroups: []
+  resources: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: collectorforkubernetes
+  name: collectorforkubernetes
+  namespace: collectorforkubernetes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: collectorforkubernetes
+subjects:
+  - kind: ServiceAccount
+    name: collectorforkubernetes
+    namespace: collectorforkubernetes
 
 ---
 apiVersion: v1
@@ -969,19 +1053,20 @@ data:
 
     
     whitelist.1 = ^kubernetes_build_info$
-    whitelist.2 = ^kubelet_runtime_operations_latency_microseconds$
-    whitelist.3 = ^kubelet_docker_operations_latency_microseconds_sum$
-    whitelist.4 = ^kubelet_network_plugin_operations_latency_microseconds_sum$
-    whitelist.5 = ^kubelet_cgroup_manager_latency_microseconds_sum$
+    whitelist.2 = ^kubelet_runtime_operations_duration_seconds_sum$
+    whitelist.3 = ^kubelet_docker_operations_duration_seconds_sum$
+    whitelist.4 = ^kubelet_network_plugin_operations_duration_seconds_sum$
+    whitelist.5 = ^kubelet_cgroup_manager_duration_seconds_sum$
     whitelist.6 = ^storage_operation_duration_seconds_sum$
-    whitelist.7 = ^kubelet_docker_operations_errors$
-    whitelist.8 = ^kubelet_runtime_operations_errors$
+    whitelist.7 = ^kubelet_docker_operations_errors_total$
+    whitelist.8 = ^kubelet_runtime_operations_errors_total$
     whitelist.9 = ^rest_client_requests_total$
     whitelist.10 = ^process_cpu_seconds_total$
     whitelist.11 = ^process_resident_memory_bytes$
     whitelist.12 = ^process_virtual_memory_bytes$
-    whitelist.13 = ^rest_client_request_latency_seconds_sum$
+    whitelist.13 = ^rest_client_request_duration_seconds_sum$
     whitelist.14 = ^kubelet_volume_stats_.+$
+    whitelist.15 = ^rest_client_requests_total$
     
 
     # Collectord reports if entropy is low
@@ -1047,11 +1132,11 @@ data:
     
     whitelist.1 = ^kubernetes_build_info$
     whitelist.2 = ^authenticated_user_requests$
-    whitelist.3 = ^apiserver_request_count$
+    whitelist.3 = ^apiserver_request_total$
     whitelist.4 = ^process_cpu_seconds_total$
     whitelist.5 = ^process_resident_memory_bytes$
     whitelist.6 = ^process_virtual_memory_bytes$
-    whitelist.7 = ^rest_client_request_latency_seconds_sum$
+    whitelist.7 = ^rest_client_request_duration_seconds_sum$
     whitelist.8 = ^rest_client_requests_total$
     
 
@@ -1104,10 +1189,10 @@ data:
 
     
     whitelist.1 = ^kubernetes_build_info$
-    whitelist.2 = ^scheduler_e2e_scheduling_latency_microseconds_sum$
-    whitelist.3 = ^scheduler_binding_latency_microseconds_sum$
-    whitelist.4 = ^scheduler_scheduling_algorithm_latency_microseconds_sum$
-    whitelist.5 = ^rest_client_request_latency_seconds_sum$
+    whitelist.2 = ^scheduler_e2e_scheduling_duration_seconds_sum$
+    whitelist.3 = ^scheduler_binding_duration_seconds_sum$
+    whitelist.4 = ^scheduler_scheduling_algorithm_duration_seconds_sum$
+    whitelist.5 = ^rest_client_request_duration_seconds_sum$
     whitelist.6 = ^rest_client_requests_total$
     whitelist.7 = ^process_cpu_seconds_total$
     whitelist.8 = ^process_resident_memory_bytes$
@@ -1166,7 +1251,7 @@ data:
     whitelist.2 = ^node_collector_zone_size$
     whitelist.3 = ^node_collector_zone_health$
     whitelist.4 = ^node_collector_unhealthy_nodes_in_zone$
-    whitelist.5 = ^rest_client_request_latency_seconds_sum$
+    whitelist.5 = ^rest_client_request_duration_seconds_sum$
     whitelist.6 = ^rest_client_requests_total$
     whitelist.7 = ^process_cpu_seconds_total$
     whitelist.8 = ^process_resident_memory_bytes$
@@ -1319,7 +1404,7 @@ data:
     excludeManagedFields = true
 
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: collectorforkubernetes
@@ -1331,14 +1416,16 @@ spec:
   # When you update configuration
   updateStrategy:
     type: RollingUpdate
+  selector:
+    matchLabels:
+      daemon: collectorforkubernetes
   template:
     metadata:
       name: collectorforkubernetes
       labels:
         daemon: collectorforkubernetes
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
     spec:
+      priorityClassName: collectorforkubernetes-critical
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforkubernetes
@@ -1348,7 +1435,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: node-role.kubernetes.io/master
+              - key: node-role.kubernetes.io/control-plane
                 operator: DoesNotExist
       tolerations:
       - operator: "Exists"
@@ -1406,6 +1493,7 @@ spec:
       - name: collectorforkubernetes-state
         hostPath:
           path: /var/lib/collectorforkubernetes/data/
+          type: DirectoryOrCreate
       # Location of docker root (for container logs and metadata)
       - name: rootfs
         hostPath:
@@ -1424,7 +1512,7 @@ spec:
           - key: 002-daemonset.conf
             path: 002-daemonset.conf
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: collectorforkubernetes-master
@@ -1434,14 +1522,16 @@ metadata:
 spec:
   updateStrategy:
     type: RollingUpdate
+  selector:
+    matchLabels:
+      daemon: collectorforkubernetes
   template:
     metadata:
       name: collectorforkubernetes-master
       labels:
         daemon: collectorforkubernetes
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
     spec:
+      priorityClassName: collectorforkubernetes-critical
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforkubernetes
@@ -1450,7 +1540,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: node-role.kubernetes.io/master
+              - key: node-role.kubernetes.io/control-plane
                 operator: Exists
       tolerations:
       - operator: "Exists"
@@ -1497,6 +1587,7 @@ spec:
       - name: collectorforkubernetes-state
         hostPath:
           path: /var/lib/collectorforkubernetes/data/
+          type: DirectoryOrCreate
       - name: rootfs
         hostPath:
           path: /
@@ -1514,7 +1605,7 @@ spec:
           - key: 003-daemonset-master.conf
             path: 003-daemonset-master.conf
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: collectorforkubernetes-addon
@@ -1523,14 +1614,16 @@ metadata:
     app: collectorforkubernetes
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      daemon: collectorforkubernetes
   template:
     metadata:
       name: collectorforkubernetes-addon
       labels:
         daemon: collectorforkubernetes
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ''
     spec:
+      priorityClassName: collectorforkubernetes-critical
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
@@ -1565,6 +1658,7 @@ spec:
       - name: collectorforkubernetes-state
         hostPath:
           path: /var/lib/collectorforkubernetes/data/
+          type: Directory
       - name: collectorforkubernetes-config
         configMap:
           name: collectorforkubernetes

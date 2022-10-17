@@ -27,6 +27,8 @@ spec:
             spec:
               type: object
               additionalProperties: true
+            force:
+              type: boolean
   scope: Cluster
   names:
     plural: configurations
@@ -89,67 +91,38 @@ metadata:
   name: collectorforopenshift
 rules:
 - apiGroups:
-  - ""
-  - apps
-  - batch
-  - extensions
-  - monitoring.coreos.com
-  - etcd.database.coreos.com
-  - vault.security.coreos.com
-  - apps.openshift.io
-  - build.openshift.io
-  - operator.openshift.io
-  - tuned.openshift.io
-  - operators.coreos.com
-  - certmanager.k8s.io
-  - kafka.strimzi.io
-  - org.eclipse.che
-  - dynatrace.com
-  - template.openshift.io
-  - nats.io
-  - syndesis.io
-  - collectord.io
+    - ""
+    - apps
+    - batch
+    - extensions
+    - collectord.io
+    - apps.openshift.io
+    - build.openshift.io
+    - authorization.openshift.io
+    - template.openshift.io
   resources:
-  - alertmanagers
-  - buildconfigs
-  - builds
-  - cronjobs
-  - daemonsets
-  - deploymentconfigs
-  - deployments
-  - endpoints
-  - events
-  - jobs
-  - namespaces
-  - nodes
-  - nodes/metrics
-  - nodes/proxy
-  - pods
-  - prometheuses
-  - replicasets
-  - replicationcontrollers
-  - scheduledjobs
-  - services
-  - statefulsets
-  - vaultservices
-  - etcdclusters
-  - challenges
-  - networks
-  - tuneds
-  - dnses
-  - catalogsources
-  - configmaps
-  - clusterserviceversions
-  - kafkas
-  - checlusters
-  - oneagents
-  - templateinstances
-  - natsclusters
-  - syndesises
-  - persistentvolumeclaims
-  - configurations
-  - dns
-  - resourcequotas
+    - alertmanagers
+    - cronjobs
+    - daemonsets
+    - deployments
+    - endpoints
+    - events
+    - jobs
+    - namespaces
+    - nodes
+    - nodes/metrics
+    - nodes/proxy
+    - pods
+    - replicasets
+    - replicationcontrollers
+    - scheduledjobs
+    - services
+    - statefulsets
+    - persistentvolumeclaims
+    - configurations
+    - resourcequotas
+    - deploymentconfigs
+    - clusterroles
   verbs:
   - get
   - list
@@ -197,9 +170,12 @@ data:
 
     [general]
 
-    # Review EULA https://www.outcoldsolutions.com/docs/license-agreement/
-    # and accept EULA by changing the value to *true*
-    acceptEULA = false
+    # (obsolete, use acceptLicense instead)
+    # acceptEULA = false
+
+    # Please review license https://www.outcoldsolutions.com/docs/license-agreement/
+    # and accept license by changing the value to *true*
+    acceptLicense = false
 
     # Location for the database
     # Collector stores positions of the files and internal state
@@ -342,12 +318,6 @@ data:
     # Default timeout for http responses. The streaming/watch requests depend on this timeout.
     timeout = 30m
 
-    # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
-    # metadataFetchRetry = 5s
-
-    # (obsolete) In case if event is recent, how long pipeline should wait for the metadata to be available in Kubernetes API
-    # metadataFetchWait = 30s
-
     # How long to keep the cache for the recent calls to API server (to limit number of calls when collector discovers new pods)
     metadataTTL = 30s
 
@@ -355,7 +325,7 @@ data:
     podsCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?$
 
     # regex to find containers in the pods
-    containersCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?/(docker-|crio-)?[0-9a-f]{64}(\.scope)?(\/.+)?$
+    containersCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?/(docker-|crio-|cri-\w+-)?[0-9a-f]{64}(\.scope)?(\/.+)?$
 
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
@@ -372,7 +342,16 @@ data:
     # watch for changes (annotations) in the objects
     watch.namespaces = v1/namespace
     watch.deploymentconfigs = apps.openshift.io/v1/deploymentconfig
-    watch.configurations =  collectord.io/v1/configuration
+    watch.configurations = collectord.io/v1/configuration
+
+    # Collectord can review the assigned ClusterRole and traverse metadata for the Pods only for the Owner objects
+    # that are defined in the ClusterRole, ignoring anything else, it does not have access to.
+    # This way Collectord does not generate 403 requests on API Server
+    clusterRole = collectorforopenshift
+
+    # Alternative of telling Collectord about the ClusterRole is to manually list the objects.
+    # You can define which objects Collectord should traverse when it sees Owners.
+    ; traverseOwnership.namespaces = v1/namespace
 
 
     # watch for pods annotations, setup prometheus collection
@@ -492,8 +471,8 @@ data:
     # in case when pipeline can post to multiple indexes, we want to avoid posibility of blocking
     # all pipelines, because just some events have incorrect index
     dedicatedClientPerIndex = true
-    # in case if some indexes aren't used anymore, how often to destroy the dedicated client
-    dedicatedClientCleanPeriod = 24h
+    # (obsolete) in case if some indexes aren't used anymore, how often to destroy the dedicated client
+    ; dedicatedClientCleanPeriod = 24h
     # possible values: RedirectToDefault, Drop, Retry
     incorrectIndexBehavior = RedirectToDefault
 
@@ -501,45 +480,26 @@ data:
     compressionLevel = default
 
     # number of dedicated splunk output threads (to increase throughput above 4k events per second)
-    threads = 1
+    threads = 2
+    # (BETA) Default algorithm between threads is roundrobin, but you can change it to weighted
+    ; threadsAlgorithm = weighted
 
     # if you want to exclude some preindexed fields from events
     # excludeFields.openshift_pod_ip = true
 
+    # By default if there are no indexes defined on the message, Collectord sends the event without the index, and
+    # Splunk HTTP Event Collector going to use the default index for the Token. You can change that, and tell Collectord
+    # to ignore all events that don't have index defined explicitly
+    ; requireExplicitIndex = true
+
+    # You can define if you want to truncate messages that are larger than 1M in length (or define your own size, like 256K)
+    ; maximumMessageLength = 1M
+
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
 
-    # Connection to the docker host
-    [general.docker]
 
-    # url for docker API, only unix socket is supported
-    url = unix:///rootfs/var/run/docker.sock
-
-    # path to docker root folder (can fallback to use folder structure to read docker metadata)
-    dockerRootFolder = /rootfs/var/lib/docker/
-
-    # (obsolete) In case if pod metadata was not retrievied. how often collector should retry to reload the pod metadata
-    # metadataFetchRetry = 5s
-
-    # (obsolete) In case if event is recent, how long pipeline should wait for the metadata to be available in Kubernetes API
-    # metadataFetchWait = 30s
-
-    # (obsolete) In case if collector does not see new events for specific container and with the last metadata refresh
-    # We have not found this container - fow how long we should keep this metadata in cache.
-    # metadataTTL = 5s
-
-    # Timeout for http responses to docker client. The streaming requests depend on this timeout.
-    timeout = 1m
-
-    # in case of Kubernetes/OpenShift if you schedule some containers with Docker, but not with the Kubernetes
-    # that allows us to find them (by default finding all containers with name not starting with k8s_)
-    containersNameFilter = ^(([^k])|(k[^8])|(k8[^s])|(k8s[^_])).*$
-
-    # regex to find docker container cgroups (helps excluding other cgroups with matched ID)
-    containersCgroupFilter = ^(/([^/\s]+/)*(docker-|docker/)[0-9a-f]{64}(\.scope)?)$
-
-
-    // connection to CRIO
+    # connection to CRIO
     [general.cri-o]
 
     # url for CRIO API, only unix socket is supported
@@ -722,6 +682,12 @@ data:
     # Read http://man7.org/linux/man-pages/man4/console_codes.4.html for more information
     stripTerminalEscapeSequencesRegex = (\x1b\[\d{1,3}(;\d{1,3})*m)|(\x07)|(\x1b]\d+(\s\d)?;[^\x07]+\x07)|(.*\x1b\[K)
 
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
@@ -781,6 +747,12 @@ data:
     # Maximum message size
     eventPatternMaxSize = 100kb
 
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
@@ -816,6 +788,10 @@ data:
     # when reach end of journald, how often to pull
     pollingInterval = 250ms
 
+    # if you don't want to forward journald from the beginning,
+    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
+    startFromRel =
+
     # override type
     type = openshift_host_logs
 
@@ -849,9 +825,6 @@ data:
     # by default every new event should start from not space symbol
     eventPattern = ^[^\s]
 
-    # Blacklisting and whitelisting the logs
-    # whitelist = ^regexp$
-
     # By default ignoring verbose hyperkube logs (all INFO messages)
     blacklist.0 = ^I\d+.*$
     # whitelist.0 = ^regexp$
@@ -875,44 +848,6 @@ data:
 
     # Default pattern to indicate new message (should start not from space)
     patternRegex = ^[^\s]
-
-
-    # Fixing multi line events for OpenShift containers
-    [pipe.join::ose-service-catalog-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-service-catalog:.*$
-    matchRegex.stream = stderr
-    patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
-
-    [pipe.join::ose-docker-registry-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-docker-registry:.*$
-    matchRegex.stream = stderr
-    patternRegex = ^time="[^"]+"\s+level=[^\s]+\s+msg=
-
-    [pipe.join::ose-docker-registry-stdout]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-docker-registry:.*$
-    matchRegex.stream = stdout
-    patternRegex = ^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+-
-
-    [pipe.join::ose-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose:.*$
-    matchRegex.stream = stderr
-    patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
-
-    [pipe.join::ose-stdout]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose:.*$
-    matchRegex.stream = stdout
-    patternRegex = ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z\s+
-
-    [pipe.join::ose-haproxy-router-stderr]
-    ; disabled = false
-    matchRegex.openshift_container_image = ^registry.access.redhat.com/openshift\d+/ose-haproxy-router:.*$
-    matchRegex.stream = stderr
-    patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
 
     # (depricated, use annotations for settings up join rules)
     # Define special event join patterns for matched events
@@ -970,6 +905,7 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # filter only metrics used by dashboards
     
     whitelist.1 = ^(kubernetes|openshift)_build_info$
     whitelist.2 = ^kubelet_runtime_operations_latency_microseconds$
@@ -986,12 +922,16 @@ data:
     whitelist.13 = ^kubelet_volume_stats_.+$
     
 
+    # Collectord reports if entropy is low (uncomment to use it)
+    ; [diagnostics::node-entropy]
+    ; settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
+    ; settings.interval = 1h
+    ; settings.threshold = 800
 
-    # [diagnostics::node-entropy]
-    # settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
-    # settings.interval = 1h
-    # settings.threshold = 800
-
+    # Collectord can report if node reboot is required (uncomment to use it)
+    ; [diagnostics::node-reboot-required]
+    ; settings.path = /rootfs/var/run/reboot-required*
+    ; settings.interval = 1h
 
   003-daemonset-master.conf: |
     [input.prometheus::kubernetes-api]
@@ -1041,6 +981,7 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
+    # filter only metrics used by dashboards
     
     whitelist.1 = ^(kubernetes|openshift)_build_info$
     whitelist.2 = ^authenticated_user_requests$
@@ -1097,18 +1038,69 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    
+    # filter only metrics used by dashboards
     whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^scheduler_e2e_scheduling_latency_microseconds_sum$
-    whitelist.3 = ^scheduler_binding_latency_microseconds_sum$
-    whitelist.4 = ^scheduler_scheduling_algorithm_latency_microseconds_sum$
+    whitelist.2 = ^process_cpu_seconds_total$
+    whitelist.3 = ^process_resident_memory_bytes$
+    whitelist.4 = ^process_virtual_memory_bytes$
+    whitelist.5 = ^node_collector_zone_size$
+    whitelist.6 = ^node_collector_zone_health$
+    whitelist.7 = ^node_collector_unhealthy_nodes_in_zone$
+
+    [input.prometheus::scheduler]
+
+    # disable prometheus scheduler metrics
+    disabled = false
+
+    # override type
+    type = openshift_prometheus
+
+    # specify Splunk index
+    index =
+
+    # override host
+    host = ${KUBERNETES_NODENAME}
+
+    # override source
+    source = scheduler
+
+    # how often to collect prometheus metrics
+    interval = 60s
+
+    # request timeout
+    timeout = 60s
+
+    # prometheus endpoint
+    endpoint.https1 = https://:10259/metrics
+    endpoint.https2 = https://:8444/metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath =
+
+    # client certificate for authentication
+    clientCertPath =
+    clientKeyPath =
+
+    # Allow invalid SSL server certificate
+    insecure = true
+
+    # include metrics help with the events
+    includeHelp = false
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # filter only metrics used by dashboards
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^scheduler_e2e_scheduling_duration_seconds_sum$
+    whitelist.3 = ^scheduler_binding_duration_seconds_sum$
+    whitelist.4 = ^scheduler_scheduling_algorithm_duration_seconds_sum$
     whitelist.5 = ^process_cpu_seconds_total$
     whitelist.6 = ^process_resident_memory_bytes$
     whitelist.7 = ^process_virtual_memory_bytes$
-    whitelist.8 = ^node_collector_zone_size$
-    whitelist.9 = ^node_collector_zone_health$
-    whitelist.10 = ^node_collector_unhealthy_nodes_in_zone$
-    
 
 
     [input.prometheus::etcd]
@@ -1142,13 +1134,13 @@ data:
 
     # server certificate for certificate validation
 
-    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/*-ca.crt
+    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-*.crt
 
 
     # client certificate for authentication
 
-    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-*.crt
-    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-member/system:etcd-*.key
+    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.crt
+    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.key
 
 
     # Allow invalid SSL server certificate
@@ -1263,14 +1255,6 @@ data:
     # specify Splunk index
     index =
 
-    # (obsolete, depends on kubernetes timeout)
-    # Set the timeout for how long request to watch events going to hang reading.
-    # eventsWatchTimeout = 30m
-
-    # (obsolete, depends on kubernetes timeout)
-    # Ignore events last seen later that this duration.
-    # eventsTTL = 12h
-
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
@@ -1301,6 +1285,11 @@ data:
 
     # exclude managed fields from the metadata
     excludeManagedFields = true
+
+    # you can remove or hash some values in the events (after modifyValues you can define path in the JSON object,
+    # and the value can be hash:{hashFunction}, or remove to remove the object )
+    ; modifyValues.object.data.* = hash:sha256
+    ; modifyValues.object.metadata.annotations.* = remove
 
     [input.kubernetes_watch::resourcequota]
     # disable events
@@ -1374,7 +1363,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.18.381-ubi8
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.19.390-ubi8
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1403,41 +1392,11 @@ spec:
         - name: collectorforopenshift-config
           mountPath: /config/
           readOnly: true
-        # Cgroup filesystem to get metrics
-        - name: cgroup
-          mountPath: /rootfs/sys/fs/cgroup
-          readOnly: true
-        # Proc filesystem to get metrics
-        - name: proc
-          mountPath: /rootfs/proc
-          readOnly: true
-        # Location of docker root (for container logs and metadata)
-        - name: docker-root
-          mountPath: /rootfs/var/lib/docker/
+        # Rootfs
+        - name: rootfs
+          mountPath: /rootfs/
           readOnly: true
           mountPropagation: HostToContainer
-        # Docker socket
-        - name: docker-unix-socket
-          mountPath: /rootfs/var/run/docker.sock
-          readOnly: true
-        # CRI-O socket (if using CRI-O runtime)
-        - name: crio-unix-socket
-          mountPath: /rootfs/var/run/crio/
-          readOnly: true
-        # Host logs location (including CRI-O logs)
-        - name: logs
-          mountPath: /rootfs/var/log/
-          readOnly: true
-        - name: run-logs
-          mountPath: /rootfs/run/log/
-          readOnly: true
-        # Application logs
-
-        - name: volumes-root
-          mountPath: /rootfs/var/lib/kubelet/
-          readOnly: true
-          mountPropagation: HostToContainer
-
         # correct timezone
         - name: localtime
           mountPath: /etc/localtime
@@ -1448,39 +1407,11 @@ spec:
       - name: collectorforopenshift-state
         hostPath:
           path: /var/lib/collectorforopenshift/data/
-      # Location of docker root (for container logs and metadata)
-      - name: docker-root
+          type: DirectoryOrCreate
+      # Location of rootfs
+      - name: rootfs
         hostPath:
-          path: /var/lib/docker/
-      # Location of cgroups file system
-      - name: cgroup
-        hostPath:
-          path: /sys/fs/cgroup
-      # Location of proc file system
-      - name: proc
-        hostPath:
-          path: /proc
-      # Host logs location (including CRI-O logs)
-      - name: logs
-        hostPath:
-          path: /var/log
-      - name: run-logs
-        hostPath:
-          path: /run/log
-      # Docker socket
-      - name: docker-unix-socket
-        hostPath:
-          path: /var/run/docker.sock
-      # CRI-O socket (if using CRI-O runtime)
-      - name: crio-unix-socket
-        hostPath:
-          path: /var/run/crio/
-      # Location for origin mounts, to autodiscover application logs
-
-      - name: volumes-root
-        hostPath:
-          path: /var/lib/kubelet/
-
+          path: /
       # correct timezone
       - name: localtime
         hostPath:
@@ -1507,21 +1438,16 @@ metadata:
 spec:
   updateStrategy:
     type: RollingUpdate
-
   selector:
     matchLabels:
       daemon: collectorforopenshift
-
   template:
     metadata:
       name: collectorforopenshift-master
       labels:
         daemon: collectorforopenshift
-      
     spec:
-      
       priorityClassName: collectorforopenshift-critical
-      
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforopenshift
@@ -1540,13 +1466,13 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.18.381-ubi8
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.19.390-ubi8
         securityContext:
           privileged: true
           runAsUser: 0
         resources:
           limits:
-            cpu: 1
+            cpu: 2
             memory: 512Mi
           requests:
             cpu: 200m
@@ -1566,37 +1492,11 @@ spec:
         - name: collectorforopenshift-config
           mountPath: /config/
           readOnly: true
-        - name: cgroup
-          mountPath: /rootfs/sys/fs/cgroup
-          readOnly: true
-        - name: proc
-          mountPath: /rootfs/proc
-          readOnly: true
-        - name: docker-logs
-          mountPath: /rootfs/var/lib/docker/
+          # Rootfs
+        - name: rootfs
+          mountPath: /rootfs/
           readOnly: true
           mountPropagation: HostToContainer
-        - name: docker-unix-socket
-          mountPath: /rootfs/var/run/docker.sock
-          readOnly: true
-        - name: crio-unix-socket
-          mountPath: /rootfs/var/run/crio/
-          readOnly: true
-        - name: logs
-          mountPath: /rootfs/var/log/
-          readOnly: true
-        - name: run-logs
-          mountPath: /rootfs/run/log/
-          readOnly: true
-
-        - name: etcd-certs
-          mountPath: /rootfs/etc/kubernetes/static-pod-resources/etcd-member/
-          readOnly: true
-        - name: volumes-root
-          mountPath: /rootfs/var/lib/kubelet/
-          readOnly: true
-          mountPropagation: HostToContainer
-
         - name: localtime
           mountPath: /etc/localtime
           readOnly: true
@@ -1604,35 +1504,10 @@ spec:
       - name: collectorforopenshift-state
         hostPath:
           path: /var/lib/collectorforopenshift/data/
-      - name: docker-logs
+          type: DirectoryOrCreate
+      - name: rootfs
         hostPath:
-          path: /var/lib/docker/
-      - name: cgroup
-        hostPath:
-          path: /sys/fs/cgroup
-      - name: proc
-        hostPath:
-          path: /proc
-      - name: logs
-        hostPath:
-          path: /var/log
-      - name: run-logs
-        hostPath:
-          path: /run/log
-      - name: docker-unix-socket
-        hostPath:
-          path: /var/run/docker.sock
-      - name: crio-unix-socket
-        hostPath:
-          path: /var/run/crio/
-
-      - name: etcd-certs
-        hostPath:
-          path: /etc/kubernetes/static-pod-resources/etcd-member/
-      - name: volumes-root
-        hostPath:
-          path: /var/lib/kubelet/
-
+          path: /
       - name: localtime
         hostPath:
           path: /etc/localtime
@@ -1674,7 +1549,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.18.381-ubi8
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.19.390-ubi8
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1704,6 +1579,7 @@ spec:
       - name: collectorforopenshift-state
         hostPath:
           path: /var/lib/collectorforopenshift/data/
+          type: Directory
       - name: collectorforopenshift-config
         configMap:
           name: collectorforopenshift
