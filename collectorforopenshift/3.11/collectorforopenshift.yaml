@@ -91,6 +91,7 @@ rules:
     - build.openshift.io
     - authorization.openshift.io
     - template.openshift.io
+    - quota.openshift.io
   resources:
     - alertmanagers
     - cronjobs
@@ -114,6 +115,7 @@ rules:
     - resourcequotas
     - deploymentconfigs
     - clusterroles
+    - clusterresourcequotas
   verbs:
   - get
   - list
@@ -160,9 +162,6 @@ data:
     # This parameter can be configured using -env-override, set it to empty string to disable this feature
 
     [general]
-
-    # (obsolete, use acceptLicense instead)
-    # acceptEULA = false
 
     # Please review license https://www.outcoldsolutions.com/docs/license-agreement/
     # and accept license by changing the value to *true*
@@ -226,12 +225,6 @@ data:
 
     # subdomain for the annotations added to the pods, workloads, namespaces or containers, like splunk.collectord.io/..
     annotationsSubdomain =
-
-    # Configure acknowledgement database.
-    # - force fsync on every write to Write-Ahead-Log
-    db.fsync = false
-    # - maximum size of the Write-Ahead-Log
-    db.compactAt = 1M
 
     # configure global thruput per second for forwarded logs (metrics are not included)
     # for example if you set `thruputPerSecond = 512Kb`, that will limit amount of logs forwarded
@@ -462,8 +455,7 @@ data:
     # in case when pipeline can post to multiple indexes, we want to avoid posibility of blocking
     # all pipelines, because just some events have incorrect index
     dedicatedClientPerIndex = true
-    # (obsolete) in case if some indexes aren't used anymore, how often to destroy the dedicated client
-    ; dedicatedClientCleanPeriod = 24h
+
     # possible values: RedirectToDefault, Drop, Retry
     incorrectIndexBehavior = RedirectToDefault
 
@@ -472,7 +464,7 @@ data:
 
     # number of dedicated splunk output threads (to increase throughput above 4k events per second)
     threads = 2
-    # (BETA) Default algorithm between threads is roundrobin, but you can change it to weighted
+    # Default algorithm between threads is roundrobin, but you can change it to weighted
     ; threadsAlgorithm = weighted
 
     # if you want to exclude some preindexed fields from events
@@ -485,6 +477,9 @@ data:
 
     # You can define if you want to truncate messages that are larger than 1M in length (or define your own size, like 256K)
     ; maximumMessageLength = 1M
+
+    # For messages generated from logs, include unique `event_id` in the event
+    ; includeEventID = false
 
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
@@ -1470,6 +1465,30 @@ data:
     # exclude managed fields from the metadata
     excludeManagedFields = true
 
+
+    [input.kubernetes_watch::clusterresourcequota]
+    # disable events
+    disabled = false
+
+    # Set the timeout for how often watch request should refresh the whole list
+    refresh = 10m
+
+    apiVersion = quota.openshift.io/v1
+    kind = ClusterResourceQuota
+    namespace =
+
+    # override type
+    type = openshift_objects
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
+
 ---
 
 apiVersion: extensions/v1beta1
@@ -1519,7 +1538,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.19.390
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.20.400
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1551,7 +1570,7 @@ spec:
         # Rootfs
         - name: rootfs
           mountPath: /rootfs/
-          readOnly: true
+          readOnly: false
           mountPropagation: HostToContainer
         # correct timezone
         - name: localtime
@@ -1622,7 +1641,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.19.390
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.20.400
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1651,7 +1670,7 @@ spec:
           # Rootfs
         - name: rootfs
           mountPath: /rootfs/
-          readOnly: true
+          readOnly: false
           mountPropagation: HostToContainer
         - name: localtime
           mountPath: /etc/localtime
@@ -1705,7 +1724,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.19.390
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.20.400
         securityContext:
           privileged: true
           runAsUser: 0

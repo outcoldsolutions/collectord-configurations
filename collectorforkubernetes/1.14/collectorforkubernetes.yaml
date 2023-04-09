@@ -80,6 +80,7 @@ rules:
   - persistentvolumeclaims
   - configurations
   - resourcequotas
+  - clusterroles
   verbs:
   - get
   - list
@@ -128,9 +129,6 @@ data:
     # This parameter can be configured using -env-override, set it to empty string to disable this feature
 
     [general]
-
-    # (obsolete, use acceptLicense instead)
-    # acceptEULA = false
 
     # Please review license https://www.outcoldsolutions.com/docs/license-agreement/
     # and accept license by changing the value to *true*
@@ -194,12 +192,6 @@ data:
 
     # subdomain for the annotations added to the pods, workloads, namespaces or containers, like splunk.collectord.io/..
     annotationsSubdomain =
-
-    # Configure acknowledgement database.
-    # - force fsync on every write to Write-Ahead-Log
-    db.fsync = false
-    # - maximum size of the Write-Ahead-Log
-    db.compactAt = 1M
 
     # configure global thruput per second for forwarded logs (metrics are not included)
     # for example if you set `thruputPerSecond = 512Kb`, that will limit amount of logs forwarded
@@ -426,8 +418,7 @@ data:
     # in case when pipeline can post to multiple indexes, we want to avoid posibility of blocking
     # all pipelines, because just some events have incorrect index
     dedicatedClientPerIndex = true
-    # (obsolete) in case if some indexes aren't used anymore, how often to destroy the dedicated client
-    ; dedicatedClientCleanPeriod = 24h
+
     # possible values: RedirectToDefault, Drop, Retry
     incorrectIndexBehavior = RedirectToDefault
 
@@ -436,7 +427,7 @@ data:
 
     # number of dedicated splunk output threads (to increase throughput above 4k events per second)
     threads = 2
-    # (BETA) Default algorithm between threads is roundrobin, but you can change it to weighted
+    # Default algorithm between threads is roundrobin, but you can change it to weighted
     ; threadsAlgorithm = weighted
 
     # if you want to exclude some preindexed fields from events
@@ -450,8 +441,13 @@ data:
     # You can define if you want to truncate messages that are larger than 1M in length (or define your own size, like 256K)
     ; maximumMessageLength = 1M
 
+    # For messages generated from logs, include unique `event_id` in the event
+    ; includeEventID = false
+
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
+
+  
 
     # Connection to the docker host
     [general.docker]
@@ -471,7 +467,8 @@ data:
 
     # regex to find docker container cgroups (helps excluding other cgroups with matched ID)
     containersCgroupFilter = ^(/([^/\s]+/)*(docker-|docker/)[0-9a-f]{64}(\.scope)?)$
-
+  
+  
 
     // connection to CRIO
     [general.cri-o]
@@ -484,7 +481,7 @@ data:
 
 
     [general.containerd]
-
+    # Runtime can be on /rootfs/run/containerd (depends on the Linux distribution)
     runtimePath = /rootfs/var/run/containerd
     namespace = k8s.io
 
@@ -734,13 +731,6 @@ data:
     # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
     # from the single container to 128Kb per second.
     thruputPerSecond =
-
-    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
-    # older than 7 days
-    tooOldEvents =
-
-    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
-    tooNewEvents =
 
     # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
     # older than 7 days
@@ -1436,9 +1426,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        # ARM images are available with suffix -arm64
-        # image: docker.io/outcoldsolutions/collectorforkubernetes:5.19.390-arm64
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.19.390
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.20.400
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1472,7 +1460,7 @@ spec:
         # Root filesystem to have access to logs and metrics
         - name: rootfs
           mountPath: /rootfs/
-          readOnly: true
+          readOnly: false
           mountPropagation: HostToContainer
         # correct timezone
         - name: localtime
@@ -1539,7 +1527,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.19.390
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.20.400
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1568,7 +1556,7 @@ spec:
           readOnly: true
         - name: rootfs
           mountPath: /rootfs/
-          readOnly: true
+          readOnly: false
           mountPropagation: HostToContainer
         - name: localtime
           mountPath: /etc/localtime
@@ -1616,7 +1604,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.19.390
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.20.400
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
