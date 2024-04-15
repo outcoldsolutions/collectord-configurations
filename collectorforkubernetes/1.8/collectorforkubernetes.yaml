@@ -91,7 +91,6 @@ metadata:
   labels:
     app: collectorforkubernetes
   name: collectorforkubernetes
-  namespace: collectorforkubernetes
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -437,6 +436,16 @@ data:
     # For messages generated from logs, include unique `event_id` in the event
     ; includeEventID = false
 
+    # Dedicated queue size for the output, default is 1024, larger queue sizes will require more memory,
+    # but will allow to handle more events in case of network issues
+    queueSize = 1024
+
+    # How many digits after the decimal point to keep for timestamps (0-9)
+    # Defaults to 3 (milliseconds)
+    # Change to 6 for microseconds
+    # Change to 9 for nanoseconds
+    ; timestampPrecision = 3
+
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
 
@@ -460,7 +469,11 @@ data:
 
     # regex to find docker container cgroups (helps excluding other cgroups with matched ID)
     containersCgroupFilter = ^(/([^/\s]+/)*(docker-|docker/)[0-9a-f]{64}(\.scope)?)$
-  
+
+    # in case of Kubernetes/OpenShift if you schedule some containers with Docker, but not with the Kubernetes
+    # change that to true
+    enableOwnWatcher = false
+
   
 
     // connection to CRIO
@@ -518,7 +531,7 @@ data:
     pathProc = /rootfs/proc
 
     # how often to collect proc stats
-    statsInterval = 60s
+    statsInterval = 30s
 
     # override type
     type = kubernetes_proc_stats_v2
@@ -958,14 +971,6 @@ data:
     patternRegex = ^[^\s]
 
 
-    # Kube API Server has trace messages with multi line events
-    [pipe.join::kube-apiserver]
-    disabled = false
-    matchRegex.kubernetes_container_image = ^gcr.io/google_containers/kube-apiserver-.*$
-    matchRegex.stream = stderr
-    patternRegex = ^[IWEF]\d{4}\s\d{2}:\d{2}:\d{2}.\d{6}\s
-
-
     # (depricated, use annotations for settings up join rules)
     # Define special event join patterns for matched events
     # Section consist of [pipe.join::<name>]
@@ -975,6 +980,15 @@ data:
     #; matchRegex.stream = stdout
     ## All events start from '[<digits>'
     #; patternRegex = ^\[\d+
+
+
+    # You can configure global replace rules for the events, which can help to remove sensitive data
+    # from logs before they are sent to Splunk. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we replace password=TEST with password=********
+    ; [pipe.replace::name]
+    ; patternRegex = (password=)([^\s]+)
+    ; replace = $1********
 
 
     [input.prometheus::kubelet]
@@ -1353,6 +1367,10 @@ data:
     ; modifyValues.object.data.* = hash:sha256
     ; modifyValues.object.metadata.annotations.* = remove
 
+    # You can exclude events by namespace with blacklist or whitelist only required namespaces
+    # blacklist.kubernetes_namespace = ^namespace0$
+    # whitelist.kubernetes_namespace = ^((namespace1)|(namespace2))$
+
     [input.kubernetes_watch::resourcequota]
     # disable events
     disabled = false
@@ -1365,7 +1383,7 @@ data:
     namespace =
 
     # override type
-    type = openshift_objects
+    type = kubernetes_objects
 
     # specify Splunk index
     index =
@@ -1419,7 +1437,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.20.400
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.21.412
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1521,7 +1539,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.20.400
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.21.412
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1599,7 +1617,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.20.400
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.21.412
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0

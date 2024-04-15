@@ -95,10 +95,10 @@ metadata:
   labels:
     app: collectorforopenshift
   name: collectorforopenshift
-  namespace: collectorforopenshift
 roleRef:
   kind: ClusterRole
   name: collectorforopenshift
+  apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
     name: collectorforopenshift
@@ -442,6 +442,16 @@ data:
 
     # For messages generated from logs, include unique `event_id` in the event
     ; includeEventID = false
+
+    # Dedicated queue size for the output, default is 1024, larger queue sizes will require more memory,
+    # but will allow to handle more events in case of network issues
+    queueSize = 1024
+
+    # How many digits after the decimal point to keep for timestamps (0-9)
+    # Defaults to 3 (milliseconds)
+    # Change to 6 for microseconds
+    # Change to 9 for nanoseconds
+    ; timestampPrecision = 3
 
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
@@ -897,7 +907,8 @@ data:
 
     # root location of log files
     path.persistent = /rootfs/var/log/journal/
-    path.volatile = /rootfs/run/log/journal/
+    # only if required
+    # path.volatile = /rootfs/run/log/journal/
 
     # when reach end of journald, how often to pull
     pollingInterval = 250ms
@@ -972,6 +983,14 @@ data:
     #; matchRegex.stream = stdout
     ## All events start from '[<digits>'
     #; patternRegex = ^\[\d+
+
+    # You can configure global replace rules for the events, which can help to remove sensitive data
+    # from logs before they are sent to Splunk. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we replace password=TEST with password=********
+    ; [pipe.replace::name]
+    ; patternRegex = (password=)([^\s]+)
+    ; replace = $1********
 
 
     [input.prometheus::kubelet]
@@ -1404,6 +1423,10 @@ data:
     ; modifyValues.object.data.* = hash:sha256
     ; modifyValues.object.metadata.annotations.* = remove
 
+    # You can exclude events by namespace with blacklist or whitelist only required namespaces
+    # blacklist.kubernetes_namespace = ^namespace0$
+    # whitelist.kubernetes_namespace = ^((namespace1)|(namespace2))$
+
     [input.kubernetes_watch::resourcequota]
     # disable events
     disabled = false
@@ -1501,7 +1524,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.20.400
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.21.412
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1605,7 +1628,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.20.400
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.21.412
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1689,7 +1712,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.20.400
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.21.412
         securityContext:
           privileged: true
           runAsUser: 0
