@@ -93,6 +93,7 @@ rules:
     - template.openshift.io
     - quota.openshift.io
   resources:
+    - splunkoutputs
     - alertmanagers
     - cronjobs
     - daemonsets
@@ -250,6 +251,10 @@ data:
     capath =
     # CA Name fot the Server certificate
     caname =
+    # license server through proxy
+    proxyUrl =
+    # authentication with basic authorization (user:password)
+    proxyBasicAuth =
 
     # forward internal collectord metrics
     [input.collectord_metrics]
@@ -322,6 +327,13 @@ data:
     # the following format:
     #   includeAnnotations.1 = ^prometheus\.io.*
     #   includeAnnotations.2 = ^example\.com.*
+
+    # You can exclude labels from metadata, using the format
+    #   excludeLabels.{key} = {regexp}
+    # For example if you want to exclude all labels that starts with `prometheus.io` or `example.com` you can include
+    # the following format:
+    #   excludeLabels.1 = ^prometheus\.io.*
+    #   excludeLabels.2 = ^example\.com.*
 
     # watch for changes (annotations) in the objects
     watch.namespaces = v1/namespace
@@ -634,6 +646,10 @@ data:
     # that can significally reduces the amount of events
     group = true
 
+    # Collectord can watch for services, node, and pod IP addresses, and lookup the names
+    # for the IP addresses. Keeping this enabled can add a significant load on the API Server, with large number of pods.
+    disableLookup = false
+
 
     # mount input (collects mount stats where kubelet runtime is stored)
     [input.mount_stats]
@@ -646,6 +662,25 @@ data:
 
     # override type
     type = openshift_mount_stats
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+
+    # diskstats input (collects /proc/diskstats)
+    [input.disk_stats]
+
+    # disable system level stats
+    disabled = false
+
+    # how often to collect mount stats
+    statsInterval = 30s
+
+    # override type
+    type = openshift_disk_stats
 
     # specify Splunk index
     index =
@@ -1093,16 +1128,22 @@ data:
     whitelist.13 = ^kubelet_volume_stats_.+$
     
 
-    # Collectord reports if entropy is low (uncomment to use it)
+    ; # Collectord reports if entropy is low (uncomment to use it)
     ; [diagnostics::node-entropy]
     ; settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
     ; settings.interval = 1h
     ; settings.threshold = 800
 
     # Collectord can report if node reboot is required (uncomment to use it)
-    ; [diagnostics::node-reboot-required]
-    ; settings.path = /rootfs/var/run/reboot-required*
-    ; settings.interval = 1h
+    [diagnostics::node-reboot-required]
+    settings.path = /rootfs/var/run/reboot-required*
+    settings.interval = 1h
+
+    # See https://www.kernel.org/doc/Documentation/admin-guide/hw-vuln/index.rst
+    # And https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-devices-system-cpu
+    [diagnostics::cpu-vulnerabilities]
+    settings.path = /rootfs/sys/devices/system/cpu/vulnerabilities/*
+    settings.interval = 1h
 
   003-daemonset-master.conf: |
     [input.prometheus::kubernetes-api]
@@ -1561,18 +1602,18 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.21.412
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.22.420
         securityContext:
           privileged: true
           runAsUser: 0
         # Define your resources if you need. Defaults should be fine for most.
         resources:
           limits:
-            cpu: 2
+            cpu: 2000m
             memory: 512Mi
           requests:
-            cpu: 200m
-            memory: 192Mi
+            cpu: 500m
+            memory: 256Mi
         env:
         - name: KUBERNETES_NODENAME
           valueFrom:
@@ -1664,17 +1705,17 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.21.412
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.22.420
         securityContext:
           privileged: true
           runAsUser: 0
         resources:
           limits:
-            cpu: 2
-            memory: 512Mi
+            cpu: 2000m
+            memory: 1024Mi
           requests:
-            cpu: 200m
-            memory: 192Mi
+            cpu: 500m
+            memory: 256Mi
         env:
         - name: KUBERNETES_NODENAME
           valueFrom:
@@ -1747,16 +1788,16 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.21.412
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.22.420
         securityContext:
           privileged: true
           runAsUser: 0
         resources:
           limits:
-            cpu: 500m
-            memory: 256Mi
+            cpu: 1000m
+            memory: 512Mi
           requests:
-            cpu: 50m
+            cpu: 200m
             memory: 64Mi
         env:
         - name: KUBERNETES_NODENAME

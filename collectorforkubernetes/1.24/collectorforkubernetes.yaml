@@ -27,9 +27,41 @@ spec:
               type: boolean
   scope: Cluster
   names:
+    listKind: ConfigurationList
     plural: configurations
     singular: configuration
     kind: Configuration
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: splunkoutputs.collectord.io
+spec:
+  group: collectord.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                token:
+                  type: string
+                insecure:
+                  type: boolean
+  scope: Namespaced
+  names:
+    listKind: SplunkOutputList
+    plural: splunkoutputs
+    singular: splunkoutput
+    kind: SplunkOutput
 
 ---
 apiVersion: v1
@@ -69,6 +101,7 @@ rules:
   - collectord.io
   - rbac.authorization.k8s.io
   resources:
+  - splunkoutputs
   - alertmanagers
   - cronjobs
   - daemonsets
@@ -225,6 +258,10 @@ data:
     capath =
     # CA Name fot the Server certificate
     caname =
+    # license server through proxy
+    proxyUrl =
+    # authentication with basic authorization (user:password)
+    proxyBasicAuth =
 
 
     # forward internal collectord metrics
@@ -297,6 +334,13 @@ data:
     # the following format:
     #   includeAnnotations.1 = ^prometheus\.io.*
     #   includeAnnotations.2 = ^example\.com.*
+
+    # You can exclude labels from metadata, using the format
+    #   excludeLabels.{key} = {regexp}
+    # For example if you want to exclude all labels that starts with `prometheus.io` or `example.com` you can include
+    # the following format:
+    #   excludeLabels.1 = ^prometheus\.io.*
+    #   excludeLabels.2 = ^example\.com.*
 
     # watch for changes (annotations) in the objects
     watch.namespaces = v1/namespace
@@ -592,6 +636,10 @@ data:
     # that can significally reduces the amount of events
     group = true
 
+    # Collectord can watch for services, node, and pod IP addresses, and lookup the names
+    # for the IP addresses. Keeping this enabled can add a significant load on the API Server, with large number of pods.
+    disableLookup = false
+
 
     # mount input (collects mount stats where kubelet runtime is stored)
     [input.mount_stats]
@@ -604,6 +652,25 @@ data:
 
     # override type
     type = kubernetes_mount_stats
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+
+    # diskstats input (collects /proc/diskstats)
+    [input.disk_stats]
+
+    # disable system level stats
+    disabled = false
+
+    # how often to collect mount stats
+    statsInterval = 30s
+
+    # override type
+    type = kubernetes_disk_stats
 
     # specify Splunk index
     index =
@@ -1048,15 +1115,21 @@ data:
     whitelist.15 = ^rest_client_requests_total$
     
 
-    # Collectord reports if entropy is low
-    [diagnostics::node-entropy]
-    settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
-    settings.interval = 1h
-    settings.threshold = 800
+    ; # Collectord reports if entropy is low
+    ; [diagnostics::node-entropy]
+    ; settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
+    ; settings.interval = 1h
+    ; settings.threshold = 800
 
     # Collectord can report if node reboot is required
     [diagnostics::node-reboot-required]
     settings.path = /rootfs/var/run/reboot-required*
+    settings.interval = 1h
+
+    # See https://www.kernel.org/doc/Documentation/admin-guide/hw-vuln/index.rst
+    # And https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-devices-system-cpu
+    [diagnostics::cpu-vulnerabilities]
+    settings.path = /rootfs/sys/devices/system/cpu/vulnerabilities/*
     settings.interval = 1h
 
 
@@ -1428,7 +1501,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.21.412
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.22.420
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1437,11 +1510,11 @@ spec:
         # You can lower or increase based on your hosts.
         resources:
           limits:
-            cpu: 2
-            memory: 512Mi
+            cpu: 2000m
+            memory: 1024Mi
           requests:
-            cpu: 200m
-            memory: 192Mi
+            cpu: 500m
+            memory: 256Mi
         env:
         - name: KUBERNETES_NODENAME
           valueFrom:
@@ -1530,18 +1603,18 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.21.412
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.22.420
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
           privileged: true
         resources:
           limits:
-            cpu: 2
-            memory: 512Mi
+            cpu: 2000m
+            memory: 1024Mi
           requests:
-            cpu: 200m
-            memory: 192Mi
+            cpu: 500m
+            memory: 256Mi
         env:
         - name: KUBERNETES_NODENAME
           valueFrom:
@@ -1608,17 +1681,17 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.21.412
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.22.420
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
           privileged: true
         resources:
           limits:
-            cpu: 500m
-            memory: 256Mi
+            cpu: 1000m
+            memory: 512Mi
           requests:
-            cpu: 50m
+            cpu: 200m
             memory: 64Mi
         env:
         - name: KUBERNETES_NODENAME
