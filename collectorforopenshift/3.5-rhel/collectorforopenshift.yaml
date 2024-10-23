@@ -144,6 +144,9 @@ data:
     # httpServerBinding = 0.0.0.0:11888
     httpServerBinding =
 
+    # log requests to the http server
+    httpServerLog = false
+
     # telemetry report endpoint, set it to empty string to disable telemetry
     telemetryEndpoint = https://license.outcold.solutions/telemetry/
 
@@ -311,6 +314,11 @@ data:
     # You can define which objects Collectord should traverse when it sees Owners.
     ; traverseOwnership.namespaces = v1/namespace
 
+    # Implementation of the watch protocol.
+    # 0 - use the default implementation (2)
+    # 1 - use the watch implementation that is optimized for the small number of objects (just issue one watch for all objects)
+    # 2 - use the watch implementation that is optimized for the large number of objects (paginate through the list of objects and issue watch for the last resource version)
+    watchImplementation = 2
 
     # watch for pods annotations, setup prometheus collection
     # for these pods
@@ -758,7 +766,7 @@ data:
     # Maximum time to wait for the messages in pipeline
     eventPatternMaxWait = 1s
     # Maximum message size
-    eventPatternMaxSize = 100kb
+    eventPatternMaxSize = 1MB
 
     # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
     samplingPercent = -1
@@ -990,6 +998,8 @@ data:
     # whitelist.0 = ^regexp$
     # blacklist.1 = ^regexp$
 
+    # Move Journald logs reader to a separate process, to prevent process from crashing in case of corrupted log files
+    spawnExternalProcess = false
 
     # Pipe to join events (container logs only)
     [pipe.join]
@@ -1004,7 +1014,7 @@ data:
     maxWait = 1s
 
     # Maximum message size
-    maxSize = 100K
+    maxSize = 1MB
 
     # Default pattern to indicate new message (should start not from space)
     patternRegex = ^[^\s]
@@ -1515,6 +1525,30 @@ data:
     # exclude managed fields from the metadata
     excludeManagedFields = true
 
+
+    [input.kubernetes_watch::nodes]
+    # disable events
+    disabled = false
+
+    # Set the timeout for how often watch request should refresh the whole list
+    refresh = 10m
+
+    apiVersion = v1
+    kind = Node
+    namespace =
+
+    # override type
+    type = openshift_objects
+
+    # specify Splunk index
+    index =
+
+    # set output (splunk or devnull, default is [general]defaultOutput)
+    output =
+
+    # exclude managed fields from the metadata
+    excludeManagedFields = true
+
 ---
 
 apiVersion: extensions/v1beta1
@@ -1565,7 +1599,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.22.420
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.23.430
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1669,7 +1703,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.22.420
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.23.430
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1753,7 +1787,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.22.420
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.23.430
         securityContext:
           privileged: true
           runAsUser: 0
