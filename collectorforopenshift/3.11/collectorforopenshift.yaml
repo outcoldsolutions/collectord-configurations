@@ -192,9 +192,13 @@ data:
     licenseEndpoint = https://license.outcold.solutions/license/
 
     # license server through proxy
+    # This configuration is used only for the Outcold Solutions License Server
+    # For license server running on-premises, use configuration under [license.client]
     licenseServerProxyUrl =
 
     # authentication with basic authorization (user:password)
+    # This configuration is used only for the Outcold Solutions License Server
+    # For license server running on-premises, use configuration under [license.client]
     licenseServerProxyBasicAuth =
 
     # license key
@@ -242,6 +246,10 @@ data:
 
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
+
+    # For input.files::X and application logs, when glob or match are configured, Collectord can automatically
+    # detect gzipped files and skip them (based on the extensions or magic numbers)
+    autoSkipGzipFiles = true
 
     [license.client]
     # point to the license located on the HTTP web server, or a hosted by the Collectord running as license server
@@ -421,6 +429,8 @@ data:
 
     # Allow invalid SSL server certificate
     insecure = false
+    # minTLSVersion = TLSv1.2
+    # maxTLSVersion = TLSv1.3
 
     # Path to CA cerificate
     caPath =
@@ -602,6 +612,9 @@ data:
     output.host =
     output.cgroup =
 
+    # Hide arguments for the processes, replacing with HIDDEN_ARGS(NUMBER)
+    hideArgs = false
+
 
     # network stats
     [input.net_stats]
@@ -761,9 +774,6 @@ data:
 
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
-
-    # by default every new event should start from not space symbol
-    eventPattern = ^[^\s]
 
 
     # Application Logs
@@ -1492,7 +1502,7 @@ data:
     refresh = 10m
 
     apiVersion = v1
-    kind = pod
+    kind = Pod
     namespace =
 
     # override type
@@ -1626,7 +1636,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: node-role.kubernetes.io/master
+              - key: node-role.kubernetes.io/control-plane
                 operator: DoesNotExist
       tolerations:
       - operator: "Exists"
@@ -1636,7 +1646,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.23.430
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.442
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1730,7 +1740,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: node-role.kubernetes.io/master
+              - key: node-role.kubernetes.io/control-plane
                 operator: Exists
       tolerations:
       - operator: "Exists"
@@ -1739,7 +1749,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.23.430
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.442
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1822,7 +1832,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.23.430
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.442
         securityContext:
           privileged: true
           runAsUser: 0
