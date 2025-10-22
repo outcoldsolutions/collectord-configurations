@@ -55,10 +55,22 @@ spec:
                 url:
                   type: string
                   format: uri
-                token:
-                  type: string
                 insecure:
                   type: boolean
+                token:
+                  type: string
+                  description: "Plain token"
+                tokenFromSecret:
+                  type: object
+                  description: "Reference to a Kubernetes Secret"
+                  properties:
+                    secret:
+                      type: string
+                    key:
+                      type: string
+              oneOf:
+                - required: ["token"]
+                - required: ["tokenFromSecret"]
   scope: Namespaced
   names:
     listKind: SplunkOutputList
@@ -146,6 +158,7 @@ rules:
     - replicasets
     - replicationcontrollers
     - scheduledjobs
+    - secrets
     - services
     - statefulsets
     - persistentvolumeclaims
@@ -951,6 +964,14 @@ data:
     ; patternRegex = (password=)([^\s]+)
     ; replace = $1********
 
+    # You can configure global hash rules for the events, which can help to hide sensitive data
+    # from logs before they are sent to outputs. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we hash IP addresses with fnv-1a-64
+    ; [pipe.hash::name]
+    ; match = (\d{1,3}\.){3}\d{1,3}'
+    ; function = fnv-1a-64
+
 
     [input.prometheus::kubelet]
 
@@ -1291,15 +1312,15 @@ data:
     index =
 
     # field extraction
-    extraction =
-    # extractionMessageField =
+    extraction = (?P<message>.*"stageTimestamp":"(?P<timestamp>[^"]+)".*)
+    extractionMessageField = message
 
     # timestamp field
-    timestampField =
+    timestampField = timestamp
 
     # format for timestamp
     # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
-    timestampFormat =
+    timestampFormat = 2006-01-02T15:04:05.999999999Z07:00
 
     # timestamp location (if not defined by format)
     timestampLocation =
@@ -1496,7 +1517,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.24.444
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:25.10.1
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1597,7 +1618,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.24.444
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:25.10.1
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1675,7 +1696,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:5.24.444
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:25.10.1
         securityContext:
           privileged: true
           runAsUser: 0

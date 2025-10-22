@@ -51,10 +51,22 @@ spec:
                 url:
                   type: string
                   format: uri
-                token:
-                  type: string
                 insecure:
                   type: boolean
+                token:
+                  type: string
+                  description: "Plain token"
+                tokenFromSecret:
+                  type: object
+                  description: "Reference to a Kubernetes Secret"
+                  properties:
+                    secret:
+                      type: string
+                    key:
+                      type: string
+              oneOf:
+                - required: ["token"]
+                - required: ["tokenFromSecret"]
   scope: Namespaced
   names:
     listKind: SplunkOutputList
@@ -112,6 +124,7 @@ rules:
   - replicasets
   - replicationcontrollers
   - scheduledjobs
+  - secrets
   - services
   - statefulsets
   - persistentvolumeclaims
@@ -1061,6 +1074,14 @@ data:
     ; [pipe.replace::name]
     ; patternRegex = (password=)([^\s]+)
     ; replace = $1********
+    
+    # You can configure global hash rules for the events, which can help to hide sensitive data
+    # from logs before they are sent to outputs. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we hash IP addresses with fnv-1a-64
+    ; [pipe.hash::name]
+    ; match = (\d{1,3}\.){3}\d{1,3}'
+    ; function = fnv-1a-64
 
 
     [input.prometheus::kubelet]
@@ -1531,7 +1552,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collectord version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.444
+        image: docker.io/outcoldsolutions/collectorforkubernetes:25.10.1
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1633,7 +1654,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.444
+        image: docker.io/outcoldsolutions/collectorforkubernetes:25.10.1
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1711,7 +1732,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.444
+        image: docker.io/outcoldsolutions/collectorforkubernetes:25.10.1
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
