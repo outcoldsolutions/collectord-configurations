@@ -7,9 +7,8 @@ metadata:
   annotations:
     openshift.io/node-selector: ''
     openshift.io/description: 'Monitoring OpenShift in Splunk, built by Outcold Solutions'
-    openshift.io/display-name: 'Collector for OpenShift'
+    openshift.io/display-name: 'Collectord for OpenShift'
 ---
-
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -66,8 +65,6 @@ spec:
     plural: splunkoutputs
     singular: splunkoutput
     kind: SplunkOutput
-
-
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -105,7 +102,6 @@ users:
   - system:serviceaccount:collectorforopenshift:collectorforopenshift
 volumes:
   - '*'
-
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -195,7 +191,7 @@ data:
   001-general.conf: |
     # The general configuration is used for all deployments
     #
-    # Run collector with the flag `-conf` and specify location of the configuration files.
+    # Run collectord with the flag `-conf` and specify location of the configuration files.
     #
     # You can override all the values using environment variables with the format like
     #   COLLECTOR__<ANYNAME>=<section>__<key>=<value>
@@ -210,7 +206,7 @@ data:
     acceptLicense = false
 
     # Location for the database
-    # Collector stores positions of the files and internal state
+    # Collectord stores positions of the files and internal state
     dataPath = ./data/
 
     # log level (accepted values are trace, debug, info, warn, error, fatal)
@@ -359,7 +355,7 @@ data:
     # Default timeout for http responses. The streaming/watch requests depend on this timeout.
     timeout = 30m
 
-    # How long to keep the cache for the recent calls to API server (to limit number of calls when collector discovers new pods)
+    # How long to keep the cache for the recent calls to API server (to limit number of calls when collectord discovers new pods)
     metadataTTL = 30s
 
     # regex to find pods
@@ -370,7 +366,6 @@ data:
 
     # path to the kubelet root location (use it to discover application logs for emptyDir)
     # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
-
     volumesRootDir = /rootfs/var/lib/kubelet/
 
     # You can attach annotations as a metadata, using the format
@@ -518,7 +513,7 @@ data:
     # Index acknowledgment timeout
     ackTimeout = 3m
 
-    # Timeout specifies a time limit for requests made by collector.
+    # Timeout specifies a time limit for requests made by collectord.
     # The timeout includes connection time, any
     # redirects, and reading the response body.
     timeout = 30s
@@ -565,7 +560,6 @@ data:
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
 
-
     # connection to CRIO
     [general.cri-o]
 
@@ -574,7 +568,6 @@ data:
 
     # Timeout for http responses to docker client. The streaming requests depend on this timeout.
     timeout = 1m
-
 
     # cgroup input
     [input.system_stats]
@@ -864,8 +857,6 @@ data:
     maxHoldAfterClose = 1800s
 
 
-
-
     [input.journald]
 
     # disable host level logs
@@ -1007,7 +998,6 @@ data:
     output =
 
     # filter only metrics used by dashboards
-    
     whitelist.1 = ^(kubernetes|openshift)_build_info$
     whitelist.2 = ^kubelet_runtime_operations_duration_seconds_sum$
     whitelist.3 = ^kubelet_docker_operations_duration_seconds_sum$
@@ -1021,7 +1011,6 @@ data:
     whitelist.11 = ^process_resident_memory_bytes$
     whitelist.12 = ^process_virtual_memory_bytes$
     whitelist.13 = ^kubelet_volume_stats_.+$
-    
 
     ; # Collectord reports if entropy is low (uncomment to use it)
     ; [diagnostics::node-entropy]
@@ -1089,14 +1078,12 @@ data:
     output =
 
     # filter only metrics used by dashboards
-    
     whitelist.1 = ^(kubernetes|openshift)_build_info$
     whitelist.2 = ^authenticated_user_requests$
     whitelist.3 = ^apiserver_request_total$
     whitelist.4 = ^process_cpu_seconds_total$
     whitelist.5 = ^process_resident_memory_bytes$
     whitelist.6 = ^process_virtual_memory_bytes$
-    
 
 
     [input.prometheus::controller]
@@ -1231,24 +1218,18 @@ data:
     interval = 60s
 
     # prometheus endpoint
-
     endpoint.https1 = https://:9979/metrics
     endpoint.https2 = https://:9978/metrics
-
 
     # token for "Authorization: Bearer $(cat tokenPath)"
     tokenPath =
 
     # server certificate for certificate validation
-
     certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-*.crt
 
-
     # client certificate for authentication
-
     clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.crt
     clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.key
-
 
     # Allow invalid SSL server certificate
     insecure = true
@@ -1288,13 +1269,11 @@ data:
     # disable host level logs
     disabled = false
 
-
     # root location of for audit logs
     path = /rootfs/var/log/kube-apiserver/
 
     # glob matching files
     glob = audit*.log
-
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
@@ -1474,9 +1453,7 @@ data:
     excludeManagedFields = true
 
 ---
-
 apiVersion: apps/v1
-
 kind: DaemonSet
 metadata:
   name: collectorforopenshift
@@ -1484,7 +1461,7 @@ metadata:
   labels:
     app: collectorforopenshift
 spec:
-  # Default updateStrategy is OnDelete. For collector RollingUpdate is suitable
+  # Default updateStrategy is OnDelete. For collectord RollingUpdate is suitable
   # When you update configuration
   updateStrategy:
     type: RollingUpdate
@@ -1498,11 +1475,8 @@ spec:
       name: collectorforopenshift
       labels:
         daemon: collectorforopenshift
-      
     spec:
-      
       priorityClassName: collectorforopenshift-critical
-      
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforopenshift
@@ -1522,7 +1496,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.442
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.444
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1585,9 +1559,7 @@ spec:
           - key: 002-daemonset.conf
             path: 002-daemonset.conf
 ---
-
 apiVersion: apps/v1
-
 kind: DaemonSet
 metadata:
   name: collectorforopenshift-master
@@ -1625,7 +1597,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.442
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.444
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1681,9 +1653,7 @@ spec:
           - key: 003-daemonset-master.conf
             path: 003-daemonset-master.conf
 ---
-
 apiVersion: apps/v1
-
 kind: Deployment
 metadata:
   name: collectorforopenshift-addon
@@ -1700,15 +1670,12 @@ spec:
       name: collectorforopenshift-addon
       labels:
         daemon: collectorforopenshift
-      
     spec:
-      
       priorityClassName: collectorforopenshift-critical
-      
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.442
+        image: docker.io/outcoldsolutions/collectorforopenshift:5.24.444
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1747,3 +1714,4 @@ spec:
             path: 001-general.conf
           - key: 004-addon.conf
             path: 004-addon.conf
+

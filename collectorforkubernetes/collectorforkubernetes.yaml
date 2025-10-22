@@ -5,7 +5,6 @@ metadata:
     app: collectorforkubernetes
   name: collectorforkubernetes
 ---
-
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -62,7 +61,6 @@ spec:
     plural: splunkoutputs
     singular: splunkoutput
     kind: SplunkOutput
-
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -71,15 +69,12 @@ metadata:
     app: collectorforkubernetes
   name: collectorforkubernetes
   namespace: collectorforkubernetes
-
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: collectorforkubernetes-critical
 value: 1000000000
-
-
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -148,7 +143,6 @@ subjects:
   - kind: ServiceAccount
     name: collectorforkubernetes
     namespace: collectorforkubernetes
-
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -161,7 +155,7 @@ data:
   001-general.conf: |
     # The general configuration is used for all deployments
     #
-    # Run collector with the flag -conf and specify location of the configuration files.
+    # Run collectord with the flag -conf and specify location of the configuration files.
     #
     # You can override all the values using environment variables with the format like
     #   COLLECTOR__<ANYNAME>=<section>__<key>=<value>
@@ -176,7 +170,7 @@ data:
     acceptLicense = false
 
     # Location for the database
-    # Collector stores positions of the files and internal state
+    # Collectord stores positions of the files and internal state
     dataPath = ./data/
 
     # log level (accepted values are trace, debug, info, warn, error, fatal)
@@ -326,7 +320,7 @@ data:
     # Default timeout for http responses. The streaming/watch requests depend on this timeout.
     timeout = 30m
 
-    # How long to keep the cache for the recent calls to API server (to limit number of calls when collector discovers new pods)
+    # How long to keep the cache for the recent calls to API server (to limit number of calls when collectord discovers new pods)
     metadataTTL = 30s
 
     # regex to find pods
@@ -481,7 +475,7 @@ data:
     # Index acknowledgment timeout
     ackTimeout = 3m
 
-    # Timeout specifies a time limit for requests made by collector.
+    # Timeout specifies a time limit for requests made by collectord.
     # The timeout includes connection time, any
     # redirects, and reading the response body.
     timeout = 30s
@@ -527,8 +521,6 @@ data:
 
   002-daemonset.conf: |
     # DaemonSet configuration is used for Nodes and Masters.
-
-  
 
     // connection to CRIO
     [general.cri-o]
@@ -1094,7 +1086,7 @@ data:
     # request timeout
     timeout = 60s
 
-    # Prometheus endpoint, multiple values can be specified, collector tries them in order till finding the first
+    # Prometheus endpoint, multiple values can be specified, collectord tries them in order till finding the first
     # working endpoint.
     # At first trying to get it through proxy
     endpoint.1proxy = https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/api/v1/nodes/${KUBERNETES_NODENAME}/proxy/metrics
@@ -1119,7 +1111,6 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    
     whitelist.1 = ^kubernetes_build_info$
     whitelist.2 = ^kubelet_runtime_operations_duration_seconds_sum$
     whitelist.3 = ^kubelet_docker_operations_duration_seconds_sum$
@@ -1203,7 +1194,6 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    
     whitelist.1 = ^kubernetes_build_info$
     whitelist.2 = ^authenticated_user_requests$
     whitelist.3 = ^apiserver_request_total$
@@ -1212,7 +1202,6 @@ data:
     whitelist.6 = ^process_virtual_memory_bytes$
     whitelist.7 = ^rest_client_request_duration_seconds_sum$
     whitelist.8 = ^rest_client_requests_total$
-    
 
 
     # This configuration works if scheduled is bind to the localhost:10251
@@ -1261,7 +1250,6 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    
     whitelist.1 = ^kubernetes_build_info$
     whitelist.2 = ^scheduler_e2e_scheduling_duration_seconds_sum$
     whitelist.3 = ^scheduler_binding_duration_seconds_sum$
@@ -1271,7 +1259,6 @@ data:
     whitelist.7 = ^process_cpu_seconds_total$
     whitelist.8 = ^process_resident_memory_bytes$
     whitelist.9 = ^process_virtual_memory_bytes$
-    
 
 
     # This configuration works if controller-manager is bind to the localhost:10252
@@ -1320,7 +1307,6 @@ data:
     # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    
     whitelist.1 = ^kubernetes_build_info$
     whitelist.2 = ^node_collector_zone_size$
     whitelist.3 = ^node_collector_zone_health$
@@ -1331,7 +1317,6 @@ data:
     whitelist.8 = ^process_resident_memory_bytes$
     whitelist.9 = ^process_virtual_memory_bytes$
     
-
 
     [input.prometheus::etcd]
 
@@ -1513,7 +1498,7 @@ metadata:
   labels:
     app: collectorforkubernetes
 spec:
-  # Default updateStrategy is OnDelete. For collector RollingUpdate is suitable
+  # Default updateStrategy is OnDelete. For collectord RollingUpdate is suitable
   # When you update configuration
   updateStrategy:
     type: RollingUpdate
@@ -1545,8 +1530,8 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        # Collector version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.442
+        # Collectord version
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.444
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1648,7 +1633,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.442
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.444
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1726,7 +1711,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.442
+        image: docker.io/outcoldsolutions/collectorforkubernetes:5.24.444
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1766,3 +1751,5 @@ spec:
             path: 001-general.conf
           - key: 004-addon.conf
             path: 004-addon.conf
+
+
