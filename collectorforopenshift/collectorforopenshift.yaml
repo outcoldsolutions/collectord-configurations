@@ -1517,7 +1517,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.1
+        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.2
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1618,7 +1618,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.1
+        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.2
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1696,7 +1696,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.1
+        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.2
         securityContext:
           privileged: true
           runAsUser: 0
