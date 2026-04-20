@@ -300,6 +300,15 @@ data:
     # For input.files::X and application logs, when glob or match are configured, Collectord can automatically
     # detect gzipped files and skip them (based on the extensions or magic numbers)
     autoSkipGzipFiles = true
+    
+    # Multi-output async publishing. When enabled (default), events routed to
+    # non-default outputs are published asynchronously so that a slow or down
+    # output does not block events destined for other outputs.
+    ; multioutput.async = true
+    # Buffer size for the async proxy (default 100). Absorbs transient bursts.
+    # When this buffer and the output's own queue are both full, events are
+    # dropped immediately without blocking the pipeline.
+    ; multioutput.asyncBufferSize = 100
 
     [license.client]
     # point to the license located on the HTTP web server, or a hosted by the Collectord running as license server
@@ -1517,7 +1526,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.2
+        image: docker.io/outcoldsolutions/collectorforopenshift:26.04.1
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1618,7 +1627,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.2
+        image: docker.io/outcoldsolutions/collectorforopenshift:26.04.1
         securityContext:
           privileged: true
           runAsUser: 0
@@ -1696,7 +1705,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: docker.io/outcoldsolutions/collectorforopenshift:25.10.2
+        image: docker.io/outcoldsolutions/collectorforopenshift:26.04.1
         securityContext:
           privileged: true
           runAsUser: 0
