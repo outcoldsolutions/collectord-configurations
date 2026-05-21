@@ -105,32 +105,34 @@ rules:
   - apps
   - batch
   - extensions
-  - collectord.io
   - rbac.authorization.k8s.io
+  - collectord.io
+  - discovery.k8s.io
   resources:
-  - splunkoutputs
   - alertmanagers
+  - clusterroles
+  - configmaps
+  - configurations
   - cronjobs
   - daemonsets
   - deployments
-  - endpoints
+  - endpointslices
   - events
   - jobs
   - namespaces
   - nodes
   - nodes/metrics
   - nodes/proxy
+  - persistentvolumeclaims
   - pods
   - replicasets
   - replicationcontrollers
+  - resourcequotas
   - scheduledjobs
   - secrets
   - services
+  - splunkoutputs
   - statefulsets
-  - persistentvolumeclaims
-  - configurations
-  - resourcequotas
-  - clusterroles
   verbs:
   - get
   - list
@@ -178,7 +180,7 @@ data:
 
     [general]
 
-    # Please review license https://www.outcoldsolutions.com/docs/license-agreement/
+    # Please review license https://www.outcoldsolutions.com/legal/license-agreement/
     # and accept license by changing the value to *true*
     acceptLicense = false
 
@@ -756,7 +758,7 @@ data:
     # Better is to enable it only for required container with the label collectord.io/strip-terminal-escape-sequences=true
     stripTerminalEscapeSequences = false
     # Regexp used for stripping terminal colors, it does not stip all the escape sequences
-    # Read http://man7.org/linux/man-pages/man4/console_codes.4.html for more information
+    # Read https://man7.org/linux/man-pages/man4/console_codes.4.html for more information
     stripTerminalEscapeSequencesRegex = (\x1b\[\d{1,3}(;\d{1,3})*m)|(\x07)|(\x1b]\d+(\s\d)?;[^\x07]+\x07)|(.*\x1b\[K)
 
     # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
@@ -1561,7 +1563,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collectord version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.1
+        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.2
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1663,7 +1665,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.1
+        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.2
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
@@ -1741,7 +1743,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.1
+        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.2
         imagePullPolicy: Always
         securityContext:
           runAsUser: 0
