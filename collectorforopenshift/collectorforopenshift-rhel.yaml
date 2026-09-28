@@ -274,8 +274,9 @@ data:
     # Use devnull by default if you don't want to redirect data
     defaultOutput = splunk
 
-    # Default buffer size for file input
-    fileInputBufferSize = 256b
+    # Buffer size for file reads. 8k matches the common filesystem block size and
+    # cuts the number of read syscalls substantially versus the historical 256b.
+    fileInputBufferSize = 8k
 
     # Maximum size of one line the file reader can read
     fileInputLineMaxSize = 1mb
@@ -1424,8 +1425,8 @@ data:
     ; modifyValues.object.metadata.annotations.* = remove
 
     # You can exclude events by namespace with blacklist or whitelist only required namespaces
-    # blacklist.kubernetes_namespace = ^namespace0$
-    # whitelist.kubernetes_namespace = ^((namespace1)|(namespace2))$
+    # blacklist.openshift_namespace = ^namespace0$
+    # whitelist.openshift_namespace = ^((namespace1)|(namespace2))$
 
     [input.kubernetes_watch::resourcequota]
     # disable events
@@ -1542,7 +1543,7 @@ spec:
       containers:
       - name: collectorforopenshift
         # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.4
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.5
         livenessProbe:
           httpGet:
             host: 127.0.0.1
@@ -1661,7 +1662,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.4
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.5
         livenessProbe:
           httpGet:
             host: 127.0.0.1
@@ -1757,7 +1758,7 @@ spec:
       serviceAccountName: collectorforopenshift
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.4
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.5
         livenessProbe:
           httpGet:
             path: /healthz

@@ -239,8 +239,9 @@ data:
     # Use devnull by default if you don't want to redirect data
     defaultOutput = splunk
 
-    # Default buffer size for file input
-    fileInputBufferSize = 256b
+    # Buffer size for file reads. 8k matches the common filesystem block size and
+    # cuts the number of read syscalls substantially versus the historical 256b.
+    fileInputBufferSize = 8k
 
     # Maximum size of one line the file reader can read
     fileInputLineMaxSize = 1mb
@@ -1579,7 +1580,7 @@ spec:
       containers:
       - name: collectorforkubernetes
         # Collectord version
-        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.4
+        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.5
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1699,7 +1700,7 @@ spec:
         effect: "NoExecute"
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.4
+        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.5
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1795,7 +1796,7 @@ spec:
       serviceAccountName: collectorforkubernetes
       containers:
       - name: collectorforkubernetes
-        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.4
+        image: docker.io/outcoldsolutions/collectorforkubernetes:26.04.5
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
