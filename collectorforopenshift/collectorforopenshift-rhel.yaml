@@ -68,6 +68,16 @@ spec:
                       type: string
                     key:
                       type: string
+                defaultMetricsIndex:
+                  type: string
+                  description: "Index of the metrics-index records sent through this output; empty for the token's default"
+                incorrectIndexBehavior:
+                  type: string
+                  description: "What happens to a record the token refuses"
+                  enum: ["RedirectToDefault", "Drop", "Retry"]
+                requireExplicitIndex:
+                  type: boolean
+                  description: "Drop a record that carries no index instead of sending it to the token's default"
               oneOf:
                 - required: ["token"]
                 - required: ["tokenFromSecret"]
@@ -78,16 +88,22 @@ spec:
     singular: splunkoutput
     kind: SplunkOutput
 ---
-apiVersion: scheduling.k8s.io/v1
-kind: PriorityClass
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: collectorforopenshift-critical
-value: 1000000000
+  labels:
+    app: collectorforopenshift
+  name: collectorforopenshift
+  namespace: collectorforopenshift
 ---
 kind: SecurityContextConstraints
 apiVersion: security.openshift.io/v1
 metadata:
   name: collectorforopenshift
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
 allowHostDirVolumePlugin: true
 allowHostIPC: true
 allowHostNetwork: true
@@ -115,84 +131,146 @@ users:
 volumes:
   - '*'
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  labels:
-    app: collectorforopenshift
-  name: collectorforopenshift
-  namespace: collectorforopenshift
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
+  name: collectorforopenshift
   labels:
     app: collectorforopenshift
-  name: collectorforopenshift
 rules:
-- apiGroups:
+  - apiGroups:
     - ""
-    - apps
-    - batch
-    - extensions
-    - collectord.io
-    - apps.openshift.io
-    - build.openshift.io
-    - authorization.openshift.io
-    - template.openshift.io
-    - quota.openshift.io
-    - discovery.k8s.io
-  resources:
-    - alertmanagers
-    - clusterresourcequotas
-    - clusterroles
-    - configurations
-    - cronjobs
-    - daemonsets
-    - deploymentconfigs
-    - deployments
-    - endpointslices
+    resources:
     - events
-    - jobs
     - namespaces
     - nodes
     - nodes/metrics
-    - nodes/proxy
     - persistentvolumeclaims
+    - persistentvolumes
     - pods
-    - replicasets
     - replicationcontrollers
     - resourcequotas
-    - scheduledjobs
-    - secrets
     - services
-    - splunkoutputs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - apps
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
     - statefulsets
-  verbs:
-  - get
-  - list
-  - watch
-- nonResourceURLs:
-  - /metrics
-  verbs:
-  - get
-  apiGroups: []
-  resources: []
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - batch
+    resources:
+    - cronjobs
+    - jobs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - discovery.k8s.io
+    resources:
+    - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - rbac.authorization.k8s.io
+    resources:
+    - clusterroles
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - collectord.io
+    resources:
+    - configurations
+    - splunkoutputs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups: []
+    nonResourceURLs:
+    - /metrics
+    resources: []
+    verbs:
+    - get
+  - apiGroups: []
+    nonResourceURLs:
+    - /api
+    - /api/*
+    - /apis
+    - /apis/*
+    resources: []
+    verbs:
+    - get
+  # A SplunkOutput with spec.tokenFromSecret reads the one Secret it names.
+  - apiGroups:
+    - ""
+    resources:
+    - secrets
+    verbs:
+    - get
+  - apiGroups:
+    - apps.openshift.io
+    resources:
+    - deploymentconfigs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - quota.openshift.io
+    resources:
+    - clusterresourcequotas
+    verbs:
+    - get
+    - list
+    - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  name: collectorforopenshift
   labels:
     app: collectorforopenshift
-  name: collectorforopenshift
 roleRef:
+  apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: collectorforopenshift
-  apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
     name: collectorforopenshift
     namespace: collectorforopenshift
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: collectorforopenshift-critical-pods
+  namespace: collectorforopenshift
+  labels:
+    app: collectorforopenshift
+spec:
+  hard:
+    pods: 1G
+  scopeSelector:
+    matchExpressions:
+    - scopeName: PriorityClass
+      operator: In
+      values:
+      - system-cluster-critical
+      - system-node-critical
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -205,11 +283,11 @@ data:
   001-general.conf: |
     # The general configuration is used for all deployments
     #
-    # Run collectord with the flag `-conf` and specify location of the configuration files.
+    # Run collectord with the flag -conf and specify location of the configuration files.
     #
     # You can override all the values using environment variables with the format like
     #   COLLECTOR__<ANYNAME>=<section>__<key>=<value>
-    # As an example you can set `dataPath` in the `[general]` section as
+    # As an example you can set dataPath in [general] section as
     #   COLLECTOR__DATAPATH=general__dataPath=C:\\some\\path\\data.db
     # This parameter can be configured using -env-override, set it to empty string to disable this feature
 
@@ -226,43 +304,31 @@ data:
     # log level (accepted values are trace, debug, info, warn, error, fatal)
     logLevel = info
 
-    # Internal http server. Bound to loopback so nothing is published on the node
-    # network: the DaemonSets run on the host network, where a 0.0.0.0 bind would
-    # expose these endpoints on the node IP. The liveness/readiness probes still reach
-    # it via httpGet.host 127.0.0.1 (the kubelet shares the host network namespace).
-    # The addon runs off the host network and overrides this to 0.0.0.0 in
-    # 004-addon.conf so the kubelet can reach it on the pod IP.
+    # Internal http server - serves the liveness (/healthz) and readiness (/readyz)
+    # probes. DaemonSets run on the host network, so bind to loopback (127.0.0.1:11888)
+    # to keep the endpoints off the node IP; the kubelet still reaches them via
+    # httpGet.host 127.0.0.1. The addon runs off the host network and overrides the
+    # bind to 0.0.0.0 in 004-addon.conf so the kubelet can reach it on the pod IP.
+    # httpServerBinding = 0.0.0.0:11888
     httpServerBinding = 127.0.0.1:11888
-
-    # Enable endpoints individually. Only the probe endpoints default on. metrics
-    # (/metrics/json, /metrics/prometheus) and pprof (/debug/pprof) expose internal
-    # detail and are unreachable on a loopback bind anyway - to scrape or profile,
-    # enable the endpoint and widen httpServerBinding (e.g. 0.0.0.0:11888).
     httpServerEndpoints.health = true
     httpServerEndpoints.ready = true
     httpServerEndpoints.metrics = false
     httpServerEndpoints.pprof = false
 
-    # log requests to the http server
     httpServerLog = false
 
     # telemetry report endpoint, set it to empty string to disable telemetry
     telemetryEndpoint = https://license.outcold.solutions/telemetry/
 
-    # license check endpoint
     licenseEndpoint = https://license.outcold.solutions/license/
 
-    # license server through proxy
-    # This configuration is used only for the Outcold Solutions License Server
-    # For license server running on-premises, use configuration under [license.client]
+    # Only for the Outcold Solutions License Server; one on-premises uses [license.client]
     licenseServerProxyUrl =
 
-    # authentication with basic authorization (user:password)
-    # This configuration is used only for the Outcold Solutions License Server
-    # For license server running on-premises, use configuration under [license.client]
+    # user:password
     licenseServerProxyBasicAuth =
 
-    # license key
     license =
 
     # Environment variable $KUBERNETES_NODENAME is used by default to setup hostname
@@ -274,16 +340,17 @@ data:
     # Use devnull by default if you don't want to redirect data
     defaultOutput = splunk
 
-    # Buffer size for file reads. 8k matches the common filesystem block size and
-    # cuts the number of read syscalls substantially versus the historical 256b.
-    fileInputBufferSize = 8k
+    # The index type of every input that sets no indexType: events, metrics (a Splunk metrics
+    # index; set [output.splunk] defaultMetricsIndex) or both, to compare the dashboards
+    defaultIndexType = events
 
-    # Maximum size of one line the file reader can read
+    fileInputBufferSize = 8kb
+
     fileInputLineMaxSize = 1mb
 
     # Include custom fields to attach to every event, in example below every event sent to Splunk will hav
     # indexed field my_environment=dev. Fields names should match to ^[a-z][_a-z0-9]*$
-    # Better way to configure that is to specify labels for OpenShift Nodes.
+    # Better way to configure that is to specify labels for Kubernetes Nodes.
     # ; fields.my_environment = dev
     # Identify the cluster if you are planning to monitor multiple clusters
     fields.openshift_cluster = -
@@ -309,54 +376,52 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # How Collectord spells the fields it composes: "_" (openshift_pod_name, the default) or "."
+    fieldsSeparator =
+
     # For input.files::X and application logs, when glob or match are configured, Collectord can automatically
     # detect gzipped files and skip them (based on the extensions or magic numbers)
     autoSkipGzipFiles = true
-    
-    # Multi-output async publishing. When enabled (default), events routed to
-    # non-default outputs are published asynchronously so that a slow or down
-    # output does not block events destined for other outputs.
-    ; multioutput.async = true
-    # Buffer size for the async proxy (default 100). Absorbs transient bursts.
-    # When this buffer and the output's own queue are both full, events are
-    # dropped immediately without blocking the pipeline.
-    ; multioutput.asyncBufferSize = 100
+
+    # Publish to non-default outputs asynchronously (default), so a slow or down output does not
+    # block the others; false holds the pipeline back instead of dropping events.
+    multioutput.async = true
+
+    # Buffer size for the async proxy (default 100), per output of each pipeline. When it and
+    # the output's queue are full, events are dropped (multioutput_dropped_events).
+    multioutput.asyncBufferSize = 100
 
     [license.client]
     # point to the license located on the HTTP web server, or a hosted by the Collectord running as license server
     url =
-    # basic authentication for the HTTP server
     basicAuth =
-    # if SSL, ignore the certificate verification
     insecure = false
-    # CA Path for the Server certificate
     capath =
-    # CA Name fot the Server certificate
     caname =
-    # license server through proxy
     proxyUrl =
-    # authentication with basic authorization (user:password)
+
+    # user:password
     proxyBasicAuth =
 
-    # forward internal collectord metrics
     [input.collectord_metrics]
 
-    # disable collectord internal metrics
     disabled = false
 
-    # override type
     type = openshift_prometheus
 
-    # how often to collect internal metrics
     interval = 1m
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    # specify Splunk index
     index =
 
-    # whitelist or blacklist the metrics
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
     whitelist.1 = ^file_input_open$
     whitelist.2 = ^file_input_read_bytes$
     whitelist.3 = ^openshift_handlers$
@@ -369,8 +434,6 @@ data:
     whitelist.10 = ^splunk_post_requests_seconds_sum.*$
     whitelist.11 = ^splunk_post_retries_required_sum.*$
 
-
-    # connection to kubernetes api
     [general.kubernetes]
 
     # Override service URL for Kubernetes (default is ${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT})
@@ -380,9 +443,6 @@ data:
     # Use it only when you need to override it
     nodeName =
 
-    # Configuration to access the API server,
-    # see https://kubernetes.io/docs/tasks/access-application-cluster/access-cluster/#accessing-the-api-from-a-pod
-    # for details
     tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
     certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
@@ -392,10 +452,8 @@ data:
     # How long to keep the cache for the recent calls to API server (to limit number of calls when collectord discovers new pods)
     metadataTTL = 30s
 
-    # regex to find pods
     podsCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?$
 
-    # regex to find containers in the pods
     containersCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?/(docker-|crio-|cri-\w+-)?[0-9a-f]{64}(\.scope)?(\/.+)?$
 
     # path to the kubelet root location (use it to discover application logs for emptyDir)
@@ -417,9 +475,13 @@ data:
     #   excludeLabels.2 = ^example\.com.*
 
     # watch for changes (annotations) in the objects
-    watch.namespaces = v1/namespace
-    watch.deploymentconfigs = apps.openshift.io/v1/deploymentconfig
-    watch.configurations = collectord.io/v1/configuration
+    watch.namespace = v1/namespace
+    watch.deployment = apps/v1/deployment
+    watch.configuration = collectord.io/v1/configuration
+
+    # true lets an annotation name a SplunkOutput of another namespace (splunk::user/<namespace>/<name>),
+    # sending the annotated pod's data with that namespace's HEC token into its indexes
+    crossNamespaceUserOutputs = false
 
     # Collectord can review the assigned ClusterRole and traverse metadata for the Pods only for the Owner objects
     # that are defined in the ClusterRole, ignoring anything else, it does not have access to.
@@ -430,127 +492,78 @@ data:
     # You can define which objects Collectord should traverse when it sees Owners.
     ; traverseOwnership.namespaces = v1/namespace
 
-    # Implementation of the watch protocol.
-    # 0 - use the default implementation (2)
-    # 1 - use the watch implementation that is optimized for the small number of objects (just issue one watch for all objects)
-    # 2 - use the watch implementation that is optimized for the large number of objects (paginate through the list of objects and issue watch for the last resource version)
-    watchImplementation = 2
-
     # watch for pods annotations, setup prometheus collection
     # for these pods
     # Addon listens on Pod Network
     # DaemonSets listen on Host Network
     [input.prometheus_auto]
 
-    # disable prometheus auto discovery for pods
     disabled = false
 
-    # override type
     type = openshift_prometheus
 
-    # specify Splunk index
     index =
 
-    # how often to collect prometheus metrics
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
     interval = 60s
 
-    # request timeout
-    timeout = 60s
-
-    # include metrics help with the events
     includeHelp = true
 
-    # http client timeout
     timeout = 30s
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
     # Include an Authorization header for the prometheus scrapper
     # When configuring scrapping with collectord using annotations use prometheus.1-AuthorizationKey=key1
     # authorization.key1 = Bearer FOO
 
-
-    # Splunk output
     [output.splunk]
 
-    # Splunk HTTP Event Collector url
     url =
-    # You can specify muiltiple splunk URls with
-    #
-    # urls.0 = https://server1:8088/services/collector/event/1.0
-    # urls.1 = https://server1:8088/services/collector/event/1.0
-    # urls.2 = https://server1:8088/services/collector/event/1.0
-    #
-    # Limitations:
-    # * The urls cannot have different path.
 
     # Specify how URL should be picked up (in case if multiple is used)
     # urlSelection = random|round-robin|random-with-round-robin
     # where:
-    # * random - choose random url on first selection and after each failure (connection or HTTP status code >= 500)
+    # * random - choose random url on first selection and a different random one after each failure (connection or HTTP status code >= 500)
     # * round-robin - choose url starting from first one and bump on each failure (connection or HTTP status code >= 500)
     # * random-with-round-robin - choose random url on first selection and after that in round-robin on each
     #                             failure (connection or HTTP status code >= 500)
-    urlSelection = random-with-round-robin
-
-    # Splunk HTTP Event Collector Token
+    # With round-robin and random-with-round-robin, the instances on a failed url can all move to the same next one.
+    urlSelection = random
     token =
-
-    # Allow invalid SSL server certificate
     insecure = false
-    # minTLSVersion = TLSv1.2
-    # maxTLSVersion = TLSv1.3
-
-    # Path to CA cerificate
     caPath =
-
-    # CA Name to verify
     caName =
-
-    # path for client certificate (if required)
     clientCertPath =
-
-    # path for client key (if required)
     clientKeyPath =
 
     # Events are batched with the maximum size set by batchSize and staying in pipeline for not longer
     # than set by frequency
     frequency = 5s
     batchSize = 768K
+
     # limit by the number of events (0 value has no limit on the number of events)
     events = 50
-
-    # Splunk through proxy
     proxyUrl =
 
-    # authentication with basic authorization (user:password)
+    # user:password
     proxyBasicAuth =
 
     # Splunk acknowledgement url (.../services/collector/ack)
     ackUrl =
-    # You can specify muiltiple splunk URls for ackUrl
-    #
-    # ackUrls.0 = https://server1:8088/services/collector/ack
-    # ackUrls.1 = https://server1:8088/services/collector/ack
-    # ackUrls.2 = https://server1:8088/services/collector/ack
-    #
-    # Make sure that they in the same order as urls for url, to make sure that this Splunk instance will be
-    # able to acknowledge the payload.
-    #
-    # Limitations:
-    # * The urls cannot have different path.
-
-    # Enable index acknowledgment
     ackEnabled = false
-
-    # Index acknowledgment timeout
     ackTimeout = 3m
 
     # Timeout specifies a time limit for requests made by collectord.
     # The timeout includes connection time, any
     # redirects, and reading the response body.
     timeout = 30s
+    idleConnTimeout = 5m
 
     # in case when pipeline can post to multiple indexes, we want to avoid posibility of blocking
     # all pipelines, because just some events have incorrect index
@@ -564,37 +577,35 @@ data:
 
     # number of dedicated splunk output threads (to increase throughput above 4k events per second)
     threads = 2
+
     # Default algorithm between threads is roundrobin, but you can change it to weighted
     ; threadsAlgorithm = weighted
+    threadsAlgorithm = weighted
 
-    # if you want to exclude some preindexed fields from events
-    # excludeFields.openshift_pod_ip = true
+    # For the move to fieldsSeparator = ".": send every built-in field a second time under its
+    # underscore name (events only). A named output inherits the default output's value.
+    ; duplicateFieldsWithUnderscore = true
+    duplicateFieldsWithUnderscore = false
 
     # By default if there are no indexes defined on the message, Collectord sends the event without the index, and
     # Splunk HTTP Event Collector going to use the default index for the Token. You can change that, and tell Collectord
     # to ignore all events that don't have index defined explicitly
     ; requireExplicitIndex = true
+    requireExplicitIndex = false
 
-    # You can define if you want to truncate messages that are larger than 1M in length (or define your own size, like 256K)
-    ; maximumMessageLength = 1M
+    # Splunk metrics index for the metrics-index records (indexType = metrics or both) of every
+    # input that names no metricsIndex; unset, they land in the HEC token's default index
+    ; defaultMetricsIndex = openshift_metrics
+    defaultMetricsIndex =
 
     # For messages generated from logs, include unique `event_id` in the event
     ; includeEventID = false
+    includeEventID = false
 
     # Dedicated queue size for the output, default is 1024, larger queue sizes will require more memory,
     # but will allow to handle more events in case of network issues
     queueSize = 1024
-
-    # How many digits after the decimal point to keep for timestamps (0-9)
-    # Defaults to 3 (milliseconds)
-    # Change to 6 for microseconds
-    # Change to 9 for nanoseconds
-    ; timestampPrecision = 3
-
   002-daemonset.conf: |
-    # DaemonSet configuration is used for Nodes and Masters.
-
-    # connection to CRIO
     [general.cri-o]
 
     # url for CRIO API, only unix socket is supported
@@ -603,51 +614,44 @@ data:
     # Timeout for http responses to docker client. The streaming requests depend on this timeout.
     timeout = 1m
 
-    # cgroup input
     [input.system_stats]
 
-    # disable system level stats
     disabled.host = false
     disabled.cgroup = false
 
-    # cgroups fs location
     pathCgroups = /rootfs/sys/fs/cgroup
 
-    # proc location
     pathProc = /rootfs/proc
 
-    # how often to collect cgroup stats
     statsInterval = 30s
 
-    # override type
     type.host = openshift_stats_v2_host
     type.cgroup = openshift_stats_v2_cgroup
 
-    # specify Splunk index
     index.host =
     index.cgroup =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex.host =
+    metricsIndex.cgroup =
+    metricsOutput.host =
+    metricsOutput.cgroup =
+
     output.host =
     output.cgroup =
 
-
-    # proc input
     [input.proc_stats]
 
-    # disable proc level stats
     disabled = false
 
-    # proc location
     pathProc = /rootfs/proc
 
-    # how often to collect proc stats
-    statsInterval = 60s
+    statsInterval = 30s
 
-    # override type
     type = openshift_proc_stats_v2
 
-    # specify Splunk index
     index.host =
     index.cgroup =
 
@@ -656,58 +660,55 @@ data:
     # excluding them can reduce the size of the index, performance of the searches and usage of the collector
     includeSystemThreads = false
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output.host =
     output.cgroup =
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
 
     # Hide arguments for the processes, replacing with HIDDEN_ARGS(NUMBER)
     hideArgs = false
 
-
-    # network stats
     [input.net_stats]
 
-    # disable net stats
     disabled = false
 
-    # proc path location
     pathProc = /rootfs/proc
 
-    # how often to collect net stats
     statsInterval = 30s
 
-    # override type
     type = openshift_net_stats_v2
 
-    # specify Splunk index
     index.host =
     index.cgroup =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex.host =
+    metricsIndex.cgroup =
+    metricsOutput.host =
+    metricsOutput.cgroup =
+
     output.host =
     output.cgroup =
 
-
-    # network socket table
     [input.net_socket_table]
 
-    # disable net stats
     disabled = false
 
-    # proc path location
     pathProc = /rootfs/proc
 
-    # how often to collect net stats
     statsInterval = 30s
 
-    # override type
     type = openshift_net_socket_table
 
-    # specify Splunk index
     index.host =
     index.cgroup =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output.host =
     output.cgroup =
 
@@ -719,61 +720,62 @@ data:
     # for the IP addresses. Keeping this enabled can add a significant load on the API Server, with large number of pods.
     disableLookup = false
 
-
-    # mount input (collects mount stats where kubelet runtime is stored)
     [input.mount_stats]
 
-    # disable system level stats
     disabled = false
 
-    # how often to collect mount stats
     statsInterval = 30s
 
-    # override type
+    # root: the filesystem of the kubelet's root directory; auto: every real filesystem, one event each
+    mounts = root
+
+    # with mounts = auto: a regular expression the filesystem type must match, and one the
+    # mount point must not (empty: the defaults)
+    include =
+    exclude =
+
     type = openshift_mount_stats
 
-    # specify Splunk index
     index =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
     output =
 
-
-    # diskstats input (collects /proc/diskstats)
     [input.disk_stats]
 
-    # disable system level stats
     disabled = false
 
-    # how often to collect mount stats
     statsInterval = 30s
 
-    # override type
     type = openshift_disk_stats
 
-    # specify Splunk index
     index =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
     output =
 
-
-    # Container Log files
     [input.files]
 
-    # disable container logs monitoring
     disabled = false
 
     # root location of docker log files
     # logs are expected in standard docker format like {containerID}/{containerID}-json.log
     # rotated files
     path = /rootfs/var/lib/docker/containers/
+
     # root location of CRI-O files
     # logs are expected in Kubernetes format, like {podID}/{containerName}/0.log
     crioPath = /rootfs/var/log/pods/
-
-    # (obsolete) glob matching pattern for log files
-    # glob = */*-json.log*
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
@@ -784,10 +786,8 @@ data:
     # include verbose fields in events (file offset)
     verboseFields = false
 
-    # override type
     type = openshift_logs
 
-    # specify Splunk index
     index =
 
     # docker splits events when they are larger than 10-100k (depends on the docker version)
@@ -796,10 +796,11 @@ data:
 
     # In case if your containers report messages with terminal colors or other escape sequences
     # you can enable strip for all the containers in one place.
-    # Better is to enable it only for required container with the label collectord.io/strip-terminal-escape-sequences=true
+    # Better is to enable it only for required container with the annotation collectord.io/logs-escapeterminalsequences=true
     stripTerminalEscapeSequences = false
+
     # Regexp used for stripping terminal colors, it does not stip all the escape sequences
-    # Read https://man7.org/linux/man-pages/man4/console_codes.4.html for more information
+    # Read http://man7.org/linux/man-pages/man4/console_codes.4.html for more information
     stripTerminalEscapeSequencesRegex = (\x1b\[\d{1,3}(;\d{1,3})*m)|(\x07)|(\x1b]\d+(\s\d)?;[^\x07]+\x07)|(.*\x1b\[K)
 
     # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
@@ -808,7 +809,6 @@ data:
     # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
     samplingKey =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
     # configure default thruput per second for for each container log
@@ -823,11 +823,61 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # Read rotated logs the kubelet compressed before Collectord read them; false counts them lost
+    readCompressed = true
 
-    # Application Logs
+    # Bytes of those logs inflated at once, node-wide, under [general] dataPath
+    compressedInflateBudget = 256MiB
+
+    # Group each stream's repeated lines into one event per run that counts them.
+    # Off unless true; a workload overrides it with its
+    # collectord.io/logs-repeat-enabled annotation.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each stream may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each stream's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true; a workload overrides it with its
+    # collectord.io/logs-fold-enabled annotation.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each stream may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each stream's top patterns every interval, as events of their own.
+    # Off unless true; a workload overrides it with its
+    # collectord.io/logs-patterns-enabled annotation.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each stream's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
     [input.app_logs]
 
-    # disable container application logs monitoring
     disabled = false
 
     # root location of mounts (applies to hostPath mounts only), if the hostPath differs inside container from the path on host
@@ -836,7 +886,6 @@ data:
     # how often to review list of available volumes
     syncInterval = 5s
 
-    # glob matching pattern for log files
     glob = *.log*
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
@@ -848,20 +897,15 @@ data:
     # include verbose fields in events (file offset)
     verboseFields = false
 
-    # override type
     type = openshift_logs
 
-    # specify Splunk index
     index =
 
     # we split files using new line character, with this configuration you can specify what defines the new event
     # after new line
     eventPatternRegex = ^[^\s]
-    # Maximum interval of messages in pipeline
     eventPatternMaxInterval = 100ms
-    # Maximum time to wait for the messages in pipeline
     eventPatternMaxWait = 1s
-    # Maximum message size
     eventPatternMaxSize = 1MB
 
     # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
@@ -870,7 +914,6 @@ data:
     # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
     samplingKey =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
     # configure default thruput per second for for each container log
@@ -890,40 +933,98 @@ data:
     # of pods, as kubelet cannot unmount the PVC volume from the system
     maxHoldAfterClose = 1800s
 
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true; a workload overrides it with its
+    # collectord.io/volume.<n>-logs-repeat-enabled annotation.
+    repeatEnabled = false
 
-    [input.journald]
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
 
-    # disable host level logs
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true; a workload overrides it with its
+    # collectord.io/volume.<n>-logs-fold-enabled annotation.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true; a workload overrides it with its
+    # collectord.io/volume.<n>-logs-patterns-enabled annotation.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.files::audit-logs]
+
     disabled = false
 
-    # root location of log files
-    path.persistent = /rootfs/var/log/journal/
-    # only if required
-    # path.volatile = /rootfs/run/log/journal/
+    path = /rootfs/var/log/kube-apiserver/
 
-    # when reach end of journald, how often to pull
+    glob = audit*.log
+
+    match =
+
+    # limit search only on one level
+    recursive = false
+    nodeSelector = node-role.kubernetes.io/master
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
 
-    # if you don't want to forward journald from the beginning,
-    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
-    startFromRel =
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
 
-    # override type
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
     type = openshift_host_logs
 
-    # specify Splunk index
     index =
+
+    extraction = (?P<message>.*"stageTimestamp":"(?P<timestamp>[^"]+)".*)
+    extractionMessageField = message
+
+    timestampField = timestamp
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat = 2006-01-02T15:04:05.999999999Z07:00
+
+    # timestamp location (if not defined by format)
+    timestampLocation =
 
     # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
     samplingPercent = -1
 
-    # sampling key (should be regexp with the named match pattern `key`)
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
     samplingKey =
 
-    # how often to reopen the journald to free old files
-    reopenInterval = 1h
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
     # configure default thruput per second for this files group
@@ -939,383 +1040,73 @@ data:
     tooNewEvents =
 
     # by default every new event should start from not space symbol
-    eventPattern = ^[^\s]
+    eventPattern =
 
-    # By default ignoring verbose hyperkube logs (all INFO messages)
-    blacklist.0 = ^I\d+.*$
+    # Blacklisting and whitelisting the logs
     # whitelist.0 = ^regexp$
-    # blacklist.1 = ^regexp$
+    # blacklist.0 = ^regexp$
 
-    # Move Journald logs reader to a separate process, to prevent process from crashing in case of corrupted log files
-    spawnExternalProcess = false
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing this input
+    # thruputExempt.0 = ^regexp$
 
-    # Pipe to join events (container logs only)
-    [pipe.join]
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true.
+    repeatEnabled = false
 
-    # disable joining event
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.files::oauth-apiserver-audit-logs]
+
     disabled = false
 
-    # Maximum interval of messages in pipeline
-    maxInterval = 100ms
+    path = /rootfs/var/log/oauth-apiserver/
 
-    # Maximum time to wait for the messages in pipeline
-    maxWait = 1s
-
-    # Maximum message size
-    maxSize = 1MB
-
-    # Default pattern to indicate new message (should start not from space)
-    patternRegex = ^[^\s]
-
-    # (depricated, use annotations for settings up join rules)
-    # Define special event join patterns for matched events
-    # Section consist of [pipe.join::<name>]
-    # [pipe.join::my_app]
-    ## Set match pattern for the fields
-    #; matchRegex.docker_container_image = my_app
-    #; matchRegex.stream = stdout
-    ## All events start from '[<digits>'
-    #; patternRegex = ^\[\d+
-
-    # You can configure global replace rules for the events, which can help to remove sensitive data
-    # from logs before they are sent to Splunk. Those rules will be applied to all pipelines for container logs, host logs,
-    # application logs and events.
-    # In the following example we replace password=TEST with password=********
-    ; [pipe.replace::name]
-    ; patternRegex = (password=)([^\s]+)
-    ; replace = $1********
-
-    # You can configure global hash rules for the events, which can help to hide sensitive data
-    # from logs before they are sent to outputs. Those rules will be applied to all pipelines for container logs, host logs,
-    # application logs and events.
-    # In the following example we hash IP addresses with fnv-1a-64
-    ; [pipe.hash::name]
-    ; match = (\d{1,3}\.){3}\d{1,3}'
-    ; function = fnv-1a-64
-
-
-    [input.prometheus::kubelet]
-
-    # disable prometheus kubelet metrics
-    disabled = false
-
-    # override type
-    type = openshift_prometheus
-
-    # specify Splunk index
-    index =
-
-    # Override host (environment variables are supported)
-    host = ${KUBERNETES_NODENAME}
-
-    # Override source
-    source = kubelet
-
-    # how often to collect prometheus metrics
-    interval = 60s
-
-    # request timeout
-    timeout = 60s
-
-    # prometheus endpoint
-    endpoint = https://127.0.0.1:10250/metrics
-
-    # token for "Authorization: Bearer $(cat tokenPath)"
-    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
-
-    # server certificate for certificate validation
-    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-
-    # client certificate for authentication
-    clientCertPath =
-
-    # Allow invalid SSL server certificate
-    insecure = true
-
-    # include metrics help with the events
-    # can be useful to explore prometheus metrics
-    includeHelp = false
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # filter only metrics used by dashboards
-    whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^kubelet_runtime_operations_duration_seconds_sum$
-    whitelist.3 = ^kubelet_docker_operations_duration_seconds_sum$
-    whitelist.4 = ^kubelet_network_plugin_operations_duration_seconds_sum$
-    whitelist.5 = ^kubelet_cgroup_manager_duration_seconds_sum$
-    whitelist.6 = ^storage_operation_duration_seconds_sum$
-    whitelist.7 = ^kubelet_docker_operations_errors_total$
-    whitelist.8 = ^kubelet_runtime_operations_errors_total$
-    whitelist.9 = ^rest_client_requests_total$
-    whitelist.10 = ^process_cpu_seconds_total$
-    whitelist.11 = ^process_resident_memory_bytes$
-    whitelist.12 = ^process_virtual_memory_bytes$
-    whitelist.13 = ^kubelet_volume_stats_.+$
-
-    ; # Collectord reports if entropy is low (uncomment to use it)
-    ; [diagnostics::node-entropy]
-    ; settings.path = /rootfs/proc/sys/kernel/random/entropy_avail
-    ; settings.interval = 1h
-    ; settings.threshold = 800
-
-    # Collectord can report if node reboot is required (uncomment to use it)
-    [diagnostics::node-reboot-required]
-    settings.path = /rootfs/var/run/reboot-required*
-    settings.interval = 1h
-
-    # See https://www.kernel.org/doc/Documentation/admin-guide/hw-vuln/index.rst
-    # And https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-devices-system-cpu
-    [diagnostics::cpu-vulnerabilities]
-    settings.path = /rootfs/sys/devices/system/cpu/vulnerabilities/*
-    settings.interval = 1h
-
-  003-daemonset-master.conf: |
-    [input.prometheus::kubernetes-api]
-
-    # disable prometheus kubernetes-api input
-    disabled = false
-
-    # override type
-    type = openshift_prometheus
-
-    # specify Splunk index
-    index =
-
-    # override host
-    host = ${KUBERNETES_NODENAME}
-
-    # override source
-    source = kubernetes-api
-
-    # how often to collect prometheus metrics
-    interval = 60s
-
-    # request timeout
-    timeout = 60s
-
-    # prometheus endpoint
-    # at first trying to get it from localhost (that way avoiding load balancer, if multiple)
-    # as fallback using proxy
-    endpoint.1localhost = https://127.0.0.1:8443/metrics
-    endpoint.2kubeapi = https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/metrics
-
-    # token for "Authorization: Bearer $(cat tokenPath)"
-    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
-
-    # server certificate for certificate validation
-    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-
-    # client certificate for authentication
-    clientCertPath =
-
-    # Allow invalid SSL server certificate
-    insecure = true
-
-    # include metrics help with the events
-    includeHelp = false
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # filter only metrics used by dashboards
-    whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^authenticated_user_requests$
-    whitelist.3 = ^apiserver_request_total$
-    whitelist.4 = ^process_cpu_seconds_total$
-    whitelist.5 = ^process_resident_memory_bytes$
-    whitelist.6 = ^process_virtual_memory_bytes$
-
-
-    [input.prometheus::controller]
-
-    # disable prometheus controller metrics
-    disabled = false
-
-    # override type
-    type = openshift_prometheus
-
-    # specify Splunk index
-    index =
-
-    # override host
-    host = ${KUBERNETES_NODENAME}
-
-    # override source
-    source = controller
-
-    # how often to collect prometheus metrics
-    interval = 60s
-
-    # request timeout
-    timeout = 60s
-
-    # prometheus endpoint
-    endpoint.https1 = https://:10257/metrics
-    endpoint.https2 = https://:8444/metrics
-
-    # token for "Authorization: Bearer $(cat tokenPath)"
-    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
-
-    # server certificate for certificate validation
-    certPath =
-
-    # client certificate for authentication
-    clientCertPath =
-    clientKeyPath =
-
-    # Allow invalid SSL server certificate
-    insecure = true
-
-    # include metrics help with the events
-    includeHelp = false
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # filter only metrics used by dashboards
-    whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^process_cpu_seconds_total$
-    whitelist.3 = ^process_resident_memory_bytes$
-    whitelist.4 = ^process_virtual_memory_bytes$
-    whitelist.5 = ^node_collector_zone_size$
-    whitelist.6 = ^node_collector_zone_health$
-    whitelist.7 = ^node_collector_unhealthy_nodes_in_zone$
-
-    [input.prometheus::scheduler]
-
-    # disable prometheus scheduler metrics
-    disabled = false
-
-    # override type
-    type = openshift_prometheus
-
-    # specify Splunk index
-    index =
-
-    # override host
-    host = ${KUBERNETES_NODENAME}
-
-    # override source
-    source = scheduler
-
-    # how often to collect prometheus metrics
-    interval = 60s
-
-    # request timeout
-    timeout = 60s
-
-    # prometheus endpoint
-    endpoint.https1 = https://:10259/metrics
-    endpoint.https2 = https://:8444/metrics
-
-    # token for "Authorization: Bearer $(cat tokenPath)"
-    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
-
-    # server certificate for certificate validation
-    certPath =
-
-    # client certificate for authentication
-    clientCertPath =
-    clientKeyPath =
-
-    # Allow invalid SSL server certificate
-    insecure = true
-
-    # include metrics help with the events
-    includeHelp = false
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # filter only metrics used by dashboards
-    whitelist.1 = ^(kubernetes|openshift)_build_info$
-    whitelist.2 = ^scheduler_e2e_scheduling_duration_seconds_sum$
-    whitelist.3 = ^scheduler_binding_duration_seconds_sum$
-    whitelist.4 = ^scheduler_scheduling_algorithm_duration_seconds_sum$
-    whitelist.5 = ^process_cpu_seconds_total$
-    whitelist.6 = ^process_resident_memory_bytes$
-    whitelist.7 = ^process_virtual_memory_bytes$
-
-
-    [input.prometheus::etcd]
-
-    # disable prometheus etcd metrics
-    disabled = false
-
-    # override type
-    type = openshift_prometheus
-
-    # specify Splunk index
-    index =
-
-    # override host
-    host = ${KUBERNETES_NODENAME}
-
-    # override source
-    source = etcd
-
-    # how often to collect prometheus metricd
-    interval = 60s
-
-    # prometheus endpoint
-    endpoint.https1 = https://:9979/metrics
-    endpoint.https2 = https://:9978/metrics
-
-    # token for "Authorization: Bearer $(cat tokenPath)"
-    tokenPath =
-
-    # server certificate for certificate validation
-    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-*.crt
-
-    # client certificate for authentication
-    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.crt
-    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.key
-
-    # Allow invalid SSL server certificate
-    insecure = true
-
-    # include metrics help with the events
-    includeHelp = false
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    whitelist.1 = ^etcd_server_leader_changes_seen_total$
-    whitelist.2 = ^etcd_server_has_leader$
-    whitelist.3 = ^etcd_server_proposals_committed_total$
-    whitelist.4 = ^etcd_server_proposals_applied_total$
-    whitelist.5 = ^etcd_server_proposals_committed_total$
-    whitelist.6 = ^etcd_server_proposals_pending$
-    whitelist.7 = ^etcd_server_proposals_failed_total$
-    whitelist.8 = ^etcd_disk_wal_fsync_duration_seconds_sum$
-    whitelist.9 = ^etcd_disk_wal_fsync_duration_seconds_count$
-    whitelist.10 = ^etcd_disk_backend_commit_duration_seconds_sum$
-    whitelist.11 = ^etcd_disk_backend_commit_duration_seconds_count$
-    whitelist.12 = ^etcd_network_client_grpc_.*$
-    whitelist.13 = ^grpc_server_handled_total$
-    whitelist.14 = ^etcd_network_peer_round_trip_time_seconds_bucket$
-    whitelist.15 = ^process_cpu_seconds_total$
-    whitelist.16 = ^process_resident_memory_bytes$
-    whitelist.17 = ^process_virtual_memory_bytes$
-    whitelist.18 = ^process_open_fds$
-    whitelist.19 = ^process_max_fds$
-    whitelist.20 = ^etcd_disk_backend_commit_duration_seconds_bucket$
-    whitelist.21 = ^etcd_disk_wal_fsync_duration_seconds_bucket$
-
-
-    # Audit logs
-    [input.files::audit-logs]
-
-    # disable host level logs
-    disabled = false
-
-    # root location of for audit logs
-    path = /rootfs/var/log/kube-apiserver/
-
-    # glob matching files
     glob = audit*.log
+
+    match =
+
+    # limit search only on one level
+    recursive = false
+    nodeSelector = node-role.kubernetes.io/master
 
     # files are read using polling schema, when reach the EOF how often to check if files got updated
     pollingInterval = 250ms
@@ -1326,17 +1117,13 @@ data:
     # include verbose fields in events (file offset)
     verboseFields = false
 
-    # override type
     type = openshift_host_logs
 
-    # specify Splunk index
     index =
 
-    # field extraction
     extraction = (?P<message>.*"stageTimestamp":"(?P<timestamp>[^"]+)".*)
     extractionMessageField = message
 
-    # timestamp field
     timestampField = timestamp
 
     # format for timestamp
@@ -1346,7 +1133,12 @@ data:
     # timestamp location (if not defined by format)
     timestampLocation =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
     output =
 
     # configure default thruput per second for this files group
@@ -1361,11 +1153,942 @@ data:
     # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
     tooNewEvents =
 
+    # by default every new event should start from not space symbol
+    eventPattern =
+
     # Blacklisting and whitelisting the logs
     # whitelist.0 = ^regexp$
     # blacklist.0 = ^regexp$
 
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing this input
+    # thruputExempt.0 = ^regexp$
 
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.files::oauth-server-audit-logs]
+
+    disabled = false
+
+    path = /rootfs/var/log/oauth-server/
+
+    glob = audit*.log
+
+    match =
+
+    # limit search only on one level
+    recursive = false
+    nodeSelector = node-role.kubernetes.io/master
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    type = openshift_host_logs
+
+    index =
+
+    extraction = (?P<message>.*"stageTimestamp":"(?P<timestamp>[^"]+)".*)
+    extractionMessageField = message
+
+    timestampField = timestamp
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat = 2006-01-02T15:04:05.999999999Z07:00
+
+    # timestamp location (if not defined by format)
+    timestampLocation =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern =
+
+    # Blacklisting and whitelisting the logs
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
+
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing this input
+    # thruputExempt.0 = ^regexp$
+
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.files::openshift-apiserver-audit-logs]
+
+    disabled = false
+
+    path = /rootfs/var/log/openshift-apiserver/
+
+    glob = audit*.log
+
+    match =
+
+    # limit search only on one level
+    recursive = false
+    nodeSelector = node-role.kubernetes.io/master
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    type = openshift_host_logs
+
+    index =
+
+    extraction = (?P<message>.*"stageTimestamp":"(?P<timestamp>[^"]+)".*)
+    extractionMessageField = message
+
+    timestampField = timestamp
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat = 2006-01-02T15:04:05.999999999Z07:00
+
+    # timestamp location (if not defined by format)
+    timestampLocation =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern =
+
+    # Blacklisting and whitelisting the logs
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
+
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing this input
+    # thruputExempt.0 = ^regexp$
+
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.journald]
+
+    disabled = false
+
+    path.persistent = /rootfs/var/log/journal/
+
+    # when reach end of journald, how often to pull
+    pollingInterval = 250ms
+
+    # if you don't want to forward journald from the beginning,
+    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
+    startFromRel =
+
+    type = openshift_host_logs
+
+    index =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    # how often to reopen the journald to free old files
+    reopenInterval = 1h
+
+    output =
+
+    # configure default thruput per second for journald
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the journald to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # By default ignoring verbose hyperkube logs (all INFO messages)
+    blacklist.1 = ^I\d+.*$
+
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing journald
+
+    # Move Journald logs reader to a separate process, to prevent process from crashing in case of corrupted log files
+    spawnExternalProcess = false
+
+    # Group each writer's repeated lines into one event per run that counts them.
+    # Off unless true.
+    # A writer is a unit, identifier, command, process, priority and facility: never grouped with another.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What the journal, all its writers together, may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each writer's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    # A writer is a unit, identifier, command, process, priority and facility: never folded with another.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What the journal, all its writers together, may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report the journal's top patterns every interval, as events of their own.
+    # Off unless true.
+    # A writer is a unit, identifier, command, process, priority and facility: its lines never share a pattern with another's, and the top patterns are of all its writers together.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What the journal's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    # Pipe to join events (container logs only)
+    [pipe.join]
+
+    disabled = false
+
+    maxInterval = 100ms
+
+    maxWait = 1s
+
+    maxSize = 1MB
+
+    # Default pattern to indicate new message (should start not from space)
+    patternRegex = ^[^\s]
+
+    # You can configure global replace rules for the events, which can help to remove sensitive data
+    # from logs before they are sent to outputs. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we replace password=TEST with password=********
+    ; [pipe.replace::name]
+    ; patternRegex = (password=)([^\s]+)
+    ; replace = $1********
+
+    # You can configure global hash rules for the events, which can help to hide sensitive data
+    # from logs before they are sent to outputs. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we hash IP addresses with fnv-1a-64
+    ; [pipe.hash::name]
+    ; match = (\d{1,3}\.){3}\d{1,3}'
+    ; function = fnv-1a-64
+
+    # Log lines matching patternRegex pass every thruput cap and sampling, in the workloads whose
+    # fields match every matchRegex.<field>; over its cap such a workload drops its other lines
+    # instead of pausing. Select by namespace: pod, container and image names are the workload
+    # owner's to choose, and label fields never match
+    ; [pipe.thruput_exempt::payments-audit]
+    ; matchRegex.openshift_namespace = ^payments$
+    ; patternRegex = ^AUDIT
+
+    # Count the events and bytes leaving every pipeline (pipeline_events, pipeline_bytes);
+    # maxSeries bounds the label combinations. Fields are written with underscores.
+    ; [pipe.eventcount]
+    ; labels = index, sourcetype, output
+    ; fields = openshift_namespace
+    ; maxSeries = 1000
+
+    [input.prometheus::controller]
+
+    disabled = false
+
+    type = openshift_prometheus
+
+    index =
+
+    source = controller
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Override host (environment variables are supported)
+    host = ${KUBERNETES_NODENAME}
+
+    source = controller
+
+    interval = 60s
+
+    timeout = 60s
+
+    # === WHERE: pick one of podSelector, endpointSlice, service, or endpoint(s) ===
+    # podSelector (with podNamespace): the pods on this node a label selector matches;
+    # endpoint(s) beside it are the fallback on a node where none runs.
+    podNamespace = openshift-kube-controller-manager
+    podSelector = app=kube-controller-manager
+
+    # endpointSlice / service: <name>.<namespace>. Omit the namespace to aggregate cluster-wide.
+
+    # endpoint.N: literal URLs, the first that answers
+
+    endpoint.1 = https://127.0.0.1:10257/metrics
+
+    # nodeSelector: the nodes the literal endpoint(s) are scraped on
+    nodeSelector = node-role.kubernetes.io/master
+
+    # === HOW: port (number) or portName, plus scheme and path ===
+    port = 10257
+
+    scheme = https
+    path = /metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+
+    # the name the server certificate is verified against, when not the address dialed
+    caName = kube-controller-manager.openshift-kube-controller-manager.svc
+
+    clientCertPath =
+
+    insecure = false
+
+    includeHelp = false
+
+    output =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
+
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^node_collector_zone_size$
+    whitelist.3 = ^node_collector_zone_health$
+    whitelist.4 = ^node_collector_unhealthy_nodes_in_zone$
+    whitelist.5 = ^node_collector_evictions_total$
+    whitelist.6 = ^workqueue_depth$
+    whitelist.7 = ^workqueue_retries_total$
+    whitelist.8 = ^workqueue_longest_running_processor_seconds$
+    whitelist.9 = ^leader_election_master_status$
+    whitelist.10 = ^rest_client_requests_total$
+    whitelist.11 = ^rest_client_request_duration_seconds_sum$
+    whitelist.12 = ^process_cpu_seconds_total$
+    whitelist.13 = ^process_resident_memory_bytes$
+    whitelist.14 = ^process_virtual_memory_bytes$
+    whitelist.15 = ^process_open_fds$
+    whitelist.16 = ^process_max_fds$
+    whitelist.17 = ^go_goroutines$
+    whitelist.18 = ^process_start_time_seconds$
+
+    [input.prometheus::coredns]
+
+    disabled = false
+
+    type = openshift_prometheus
+
+    index =
+
+    source = coredns
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Override host (environment variables are supported)
+    host = ${KUBERNETES_NODENAME}
+
+    source = coredns
+
+    interval = 60s
+
+    timeout = 60s
+
+    # === WHERE: pick one of podSelector, endpointSlice, service, or endpoint(s) ===
+    # podSelector (with podNamespace): the pods on this node a label selector matches;
+    # endpoint(s) beside it are the fallback on a node where none runs.
+    podNamespace = openshift-dns
+    podSelector = dns.operator.openshift.io/daemonset-dns=default
+
+    # endpointSlice / service: <name>.<namespace>. Omit the namespace to aggregate cluster-wide.
+
+    # endpoint.N: literal URLs, the first that answers
+
+    # nodeSelector: the nodes the literal endpoint(s) are scraped on
+
+    # === HOW: port (number) or portName, plus scheme and path ===
+    port = 9154
+
+    scheme = https
+    path = /metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+
+    # the name the server certificate is verified against, when not the address dialed
+    caName = dns-default.openshift-dns.svc
+
+    clientCertPath =
+
+    insecure = false
+
+    includeHelp = false
+
+    output =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
+
+    whitelist.1 = ^coredns_.+$
+    whitelist.2 = ^go_gc_duration_seconds$
+    whitelist.3 = ^go_goroutines$
+    whitelist.4 = ^go_memstats_heap_inuse_bytes$
+    whitelist.5 = ^process_cpu_seconds_total$
+    whitelist.6 = ^process_network_receive_bytes_total$
+    whitelist.7 = ^process_network_transmit_bytes_total$
+    whitelist.8 = ^process_open_fds$
+    whitelist.9 = ^process_resident_memory_bytes$
+    whitelist.10 = ^process_start_time_seconds$
+    whitelist.11 = ^process_virtual_memory_bytes$
+
+    [input.prometheus::etcd]
+
+    disabled = false
+
+    type = openshift_prometheus
+
+    index =
+
+    source = etcd
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Override host (environment variables are supported)
+    host = ${KUBERNETES_NODENAME}
+
+    source = etcd
+
+    interval = 60s
+
+    timeout = 60s
+
+    # === WHERE: pick one of podSelector, endpointSlice, service, or endpoint(s) ===
+    # podSelector (with podNamespace): the pods on this node a label selector matches;
+    # endpoint(s) beside it are the fallback on a node where none runs.
+
+    # endpointSlice / service: <name>.<namespace>. Omit the namespace to aggregate cluster-wide.
+
+    # endpoint.N: literal URLs, the first that answers
+
+    endpoint.1 = https://:9979/metrics
+    endpoint.2 = https://:9978/metrics
+
+    # nodeSelector: the nodes the literal endpoint(s) are scraped on
+    nodeSelector = node-role.kubernetes.io/master
+
+    # === HOW: port (number) or portName, plus scheme and path ===
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath =
+
+    # server certificate for certificate validation
+    certPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-*.crt
+
+    clientCertPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.crt
+    clientKeyPath = /rootfs/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.key
+
+    insecure = true
+
+    includeHelp = false
+
+    output =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
+
+    whitelist.1 = ^etcd_server_leader_changes_seen_total$
+    whitelist.2 = ^etcd_server_has_leader$
+    whitelist.3 = ^etcd_server_is_leader$
+    whitelist.4 = ^etcd_server_proposals_committed_total$
+    whitelist.5 = ^etcd_server_proposals_applied_total$
+    whitelist.6 = ^etcd_server_proposals_pending$
+    whitelist.7 = ^etcd_server_proposals_failed_total$
+    whitelist.8 = ^etcd_disk_wal_fsync_duration_seconds_sum$
+    whitelist.9 = ^etcd_disk_wal_fsync_duration_seconds_bucket$
+    whitelist.10 = ^etcd_disk_backend_commit_duration_seconds_sum$
+    whitelist.11 = ^etcd_disk_backend_commit_duration_seconds_bucket$
+    whitelist.12 = ^etcd_network_client_grpc_.*$
+    whitelist.13 = ^grpc_server_handled_total$
+    whitelist.14 = ^etcd_network_peer_round_trip_time_seconds_bucket$
+    whitelist.15 = ^etcd_network_peer_sent_failures_total$
+    whitelist.16 = ^etcd_mvcc_db_total_size_in_bytes$
+    whitelist.17 = ^etcd_mvcc_db_total_size_in_use_in_bytes$
+    whitelist.18 = ^etcd_server_quota_backend_bytes$
+    whitelist.19 = ^etcd_debugging_mvcc_keys_total$
+    whitelist.20 = ^etcd_server_slow_apply_total$
+    whitelist.21 = ^etcd_server_slow_read_indexes_total$
+    whitelist.22 = ^etcd_server_read_indexes_failed_total$
+    whitelist.23 = ^etcd_server_health_failures$
+    whitelist.24 = ^process_cpu_seconds_total$
+    whitelist.25 = ^process_resident_memory_bytes$
+    whitelist.26 = ^process_virtual_memory_bytes$
+    whitelist.27 = ^process_open_fds$
+    whitelist.28 = ^process_max_fds$
+    whitelist.29 = ^go_goroutines$
+    whitelist.30 = ^process_start_time_seconds$
+    whitelist.31 = ^etcd_server_version$
+    whitelist.32 = ^etcd_cluster_version$
+    whitelist.33 = ^etcd_server_go_version$
+    whitelist.34 = ^etcd_server_id$
+    whitelist.35 = ^etcd_network_peer_round_trip_time_seconds_sum$
+
+    # counters, by name, whose series are not sent until they first rise above 0
+    skipZeroCounters.1 = ^grpc_server_handled_total$
+
+    [input.prometheus::kubelet]
+
+    disabled = false
+
+    type = openshift_prometheus
+
+    index =
+
+    source = kubelet
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Override host (environment variables are supported)
+    host = ${KUBERNETES_NODENAME}
+
+    source = kubelet
+
+    interval = 60s
+
+    timeout = 60s
+
+    # === WHERE: pick one of podSelector, endpointSlice, service, or endpoint(s) ===
+    # podSelector (with podNamespace): the pods on this node a label selector matches;
+    # endpoint(s) beside it are the fallback on a node where none runs.
+
+    # endpointSlice / service: <name>.<namespace>. Omit the namespace to aggregate cluster-wide.
+
+    # endpoint.N: literal URLs, the first that answers
+
+    endpoint.1 = https://${KUBERNETES_NODEIP}:10250/metrics
+
+    # nodeSelector: the nodes the literal endpoint(s) are scraped on
+
+    # === HOW: port (number) or portName, plus scheme and path ===
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    clientCertPath =
+
+    insecure = true
+
+    includeHelp = false
+
+    output =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
+
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^kubelet_runtime_operations_duration_seconds_sum$
+    whitelist.3 = ^kubelet_runtime_operations_errors_total$
+    whitelist.4 = ^kubelet_cgroup_manager_duration_seconds_sum$
+    whitelist.5 = ^storage_operation_duration_seconds_sum$
+    whitelist.6 = ^kubelet_volume_stats_.+$
+    whitelist.7 = ^kubelet_running_pods$
+    whitelist.8 = ^kubelet_running_containers$
+    whitelist.9 = ^kubelet_desired_pods$
+    whitelist.10 = ^kubelet_pleg_relist_duration_seconds_sum$
+    whitelist.11 = ^kubelet_pod_start_duration_seconds_sum$
+    whitelist.12 = ^kubelet_pod_worker_duration_seconds_sum$
+    whitelist.13 = ^kubelet_started_pods_errors_total$
+    whitelist.14 = ^kubelet_certificate_manager_client_ttl_seconds$
+    whitelist.15 = ^rest_client_requests_total$
+    whitelist.16 = ^rest_client_request_duration_seconds_sum$
+    whitelist.17 = ^process_cpu_seconds_total$
+    whitelist.18 = ^process_resident_memory_bytes$
+    whitelist.19 = ^process_virtual_memory_bytes$
+    whitelist.20 = ^process_open_fds$
+    whitelist.21 = ^process_max_fds$
+    whitelist.22 = ^go_goroutines$
+    whitelist.23 = ^process_start_time_seconds$
+
+    [input.prometheus::kubernetes-api]
+
+    disabled = false
+
+    type = openshift_prometheus
+
+    index =
+
+    source = kubernetes-api
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Override host (environment variables are supported)
+    host = ${KUBERNETES_NODENAME}
+
+    source = kubernetes-api
+
+    interval = 60s
+
+    timeout = 60s
+
+    # === WHERE: pick one of podSelector, endpointSlice, service, or endpoint(s) ===
+    # podSelector (with podNamespace): the pods on this node a label selector matches;
+    # endpoint(s) beside it are the fallback on a node where none runs.
+    podNamespace = openshift-kube-apiserver
+    podSelector = app=openshift-kube-apiserver
+
+    # endpointSlice / service: <name>.<namespace>. Omit the namespace to aggregate cluster-wide.
+
+    # endpoint.N: literal URLs, the first that answers
+
+    endpoint.1 = https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}/metrics
+
+    # nodeSelector: the nodes the literal endpoint(s) are scraped on
+    nodeSelector = node-role.kubernetes.io/master
+
+    # === HOW: port (number) or portName, plus scheme and path ===
+    port = 6443
+
+    scheme = https
+    path = /metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    # the name the server certificate is verified against, when not the address dialed
+    caName = kubernetes
+
+    clientCertPath =
+
+    insecure = false
+
+    includeHelp = false
+
+    output =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
+
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^authenticated_user_requests$
+    whitelist.3 = ^apiserver_request_total$
+    whitelist.4 = ^apiserver_current_inflight_requests$
+    whitelist.5 = ^apiserver_flowcontrol_current_inqueue_requests$
+    whitelist.6 = ^apiserver_request_terminations_total$
+    whitelist.7 = ^apiserver_client_certificate_expiration_seconds_bucket$
+    whitelist.8 = ^apiserver_audit_event_total$
+    whitelist.9 = ^apiserver_audit_error_total$
+    whitelist.10 = ^apiserver_resource_objects$
+    whitelist.11 = ^apiserver_storage_objects$
+    whitelist.12 = ^process_cpu_seconds_total$
+    whitelist.13 = ^process_resident_memory_bytes$
+    whitelist.14 = ^process_virtual_memory_bytes$
+    whitelist.15 = ^process_open_fds$
+    whitelist.16 = ^process_max_fds$
+    whitelist.17 = ^go_goroutines$
+    whitelist.18 = ^process_start_time_seconds$
+    whitelist.19 = ^apiserver_request_duration_seconds_sum$
+
+    [input.prometheus::scheduler]
+
+    disabled = false
+
+    type = openshift_prometheus
+
+    index =
+
+    source = scheduler
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Override host (environment variables are supported)
+    host = ${KUBERNETES_NODENAME}
+
+    source = scheduler
+
+    interval = 60s
+
+    timeout = 60s
+
+    # === WHERE: pick one of podSelector, endpointSlice, service, or endpoint(s) ===
+    # podSelector (with podNamespace): the pods on this node a label selector matches;
+    # endpoint(s) beside it are the fallback on a node where none runs.
+    podNamespace = openshift-kube-scheduler
+    podSelector = app=openshift-kube-scheduler
+
+    # endpointSlice / service: <name>.<namespace>. Omit the namespace to aggregate cluster-wide.
+
+    # endpoint.N: literal URLs, the first that answers
+
+    endpoint.1 = https://127.0.0.1:10259/metrics
+
+    # nodeSelector: the nodes the literal endpoint(s) are scraped on
+    nodeSelector = node-role.kubernetes.io/master
+
+    # === HOW: port (number) or portName, plus scheme and path ===
+    port = 10259
+
+    scheme = https
+    path = /metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # server certificate for certificate validation
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+
+    # the name the server certificate is verified against, when not the address dialed
+    caName = scheduler.openshift-kube-scheduler.svc
+
+    clientCertPath =
+
+    insecure = false
+
+    includeHelp = false
+
+    output =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
+
+    whitelist.1 = ^(kubernetes|openshift)_build_info$
+    whitelist.2 = ^scheduler_scheduling_attempt_duration_seconds_sum$
+    whitelist.3 = ^scheduler_scheduling_algorithm_duration_seconds_sum$
+    whitelist.4 = ^scheduler_pending_pods$
+    whitelist.5 = ^scheduler_schedule_attempts_total$
+    whitelist.6 = ^scheduler_queue_incoming_pods_total$
+    whitelist.7 = ^scheduler_preemption_attempts_total$
+    whitelist.8 = ^leader_election_master_status$
+    whitelist.9 = ^rest_client_requests_total$
+    whitelist.10 = ^rest_client_request_duration_seconds_sum$
+    whitelist.11 = ^process_cpu_seconds_total$
+    whitelist.12 = ^process_resident_memory_bytes$
+    whitelist.13 = ^process_virtual_memory_bytes$
+    whitelist.14 = ^process_open_fds$
+    whitelist.15 = ^process_max_fds$
+    whitelist.16 = ^go_goroutines$
+    whitelist.17 = ^process_start_time_seconds$
+
+    [diagnostics::cpu-vulnerabilities]
+    settings.interval = 1h
+    settings.path = /rootfs/sys/devices/system/cpu/vulnerabilities/*
+
+    [diagnostics::node-reboot-required]
+    settings.interval = 1h
+    settings.path = /rootfs/run/reboot-required*
   004-addon.conf: |
     [general]
     # addons can be run in parallel with agents
@@ -1373,50 +2096,38 @@ data:
 
     # The addon runs off the host network, so the kubelet probes /healthz and /readyz
     # on the pod IP - bind 0.0.0.0 here (overrides the loopback default in
-    # 001-general.conf, which would be unreachable). Only health/ready are enabled, so
-    # this exposes nothing beyond the probes on the cluster-internal pod IP.
+    # 001-general.conf), on the port that binding names.
     httpServerBinding = 0.0.0.0:11888
 
     [input.kubernetes_events]
 
-    # disable collecting kubernetes events
     disabled = false
 
-    # override type
     type = openshift_events
 
-    # specify Splunk index
     index =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    # exclude managed fields from the metadata
     excludeManagedFields = true
 
-
-    [input.kubernetes_watch::pods]
-
-    # disable events
+    [input.kubernetes_watch::clusterresourcequota]
     disabled = false
 
-    # Set the timeout for how often watch request should refresh the whole list
-    refresh = 10m
+    # How often every object is forwarded again; one no longer listed is forwarded as DELETED
+    # with "reason":"absent_from_relist"
+    refresh = 45m
 
-    apiVersion = v1
-    kind = Pod
+    apiVersion = quota.openshift.io/v1
+    kind = ClusterResourceQuota
     namespace =
 
-    # override type
     type = openshift_objects
 
-    # specify Splunk index
     index =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    # exclude managed fields from the metadata
     excludeManagedFields = true
 
     # you can remove or hash some values in the events (after modifyValues you can define path in the JSON object,
@@ -1427,124 +2138,153 @@ data:
     # You can exclude events by namespace with blacklist or whitelist only required namespaces
     # blacklist.openshift_namespace = ^namespace0$
     # whitelist.openshift_namespace = ^((namespace1)|(namespace2))$
-
-    [input.kubernetes_watch::resourcequota]
-    # disable events
-    disabled = false
-
-    # Set the timeout for how often watch request should refresh the whole list
-    refresh = 10m
-
-    apiVersion = v1
-    kind = ResourceQuota
-    namespace =
-
-    # override type
-    type = openshift_objects
-
-    # specify Splunk index
-    index =
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # exclude managed fields from the metadata
-    excludeManagedFields = true
-
-
-    [input.kubernetes_watch::clusterresourcequota]
-    # disable events
-    disabled = false
-
-    # Set the timeout for how often watch request should refresh the whole list
-    refresh = 10m
-
-    apiVersion = quota.openshift.io/v1
-    kind = ClusterResourceQuota
-    namespace =
-
-    # override type
-    type = openshift_objects
-
-    # specify Splunk index
-    index =
-
-    # set output (splunk or devnull, default is [general]defaultOutput)
-    output =
-
-    # exclude managed fields from the metadata
-    excludeManagedFields = true
-
+    # A cluster-scoped kind has no namespace: filter it by a path, such as object.metadata.name
 
     [input.kubernetes_watch::nodes]
-    # disable events
     disabled = false
 
-    # Set the timeout for how often watch request should refresh the whole list
-    refresh = 10m
+    # How often every object is forwarded again; one no longer listed is forwarded as DELETED
+    # with "reason":"absent_from_relist"
+    refresh = 45m
 
     apiVersion = v1
     kind = Node
     namespace =
 
-    # override type
     type = openshift_objects
 
-    # specify Splunk index
     index =
 
-    # set output (splunk or devnull, default is [general]defaultOutput)
     output =
 
-    # exclude managed fields from the metadata
     excludeManagedFields = true
 
+    # you can remove or hash some values in the events (after modifyValues you can define path in the JSON object,
+    # and the value can be hash:{hashFunction}, or remove to remove the object )
+    ; modifyValues.object.data.* = hash:sha256
+    ; modifyValues.object.metadata.annotations.* = remove
+
+    # You can exclude events by namespace with blacklist or whitelist only required namespaces
+    # blacklist.openshift_namespace = ^namespace0$
+    # whitelist.openshift_namespace = ^((namespace1)|(namespace2))$
+    # A cluster-scoped kind has no namespace: filter it by a path, such as object.metadata.name
+
+    [input.kubernetes_watch::pods]
+    disabled = false
+
+    # How often every object is forwarded again; one no longer listed is forwarded as DELETED
+    # with "reason":"absent_from_relist"
+    refresh = 45m
+
+    apiVersion = v1
+    kind = Pod
+    namespace =
+
+    type = openshift_objects
+
+    index =
+
+    output =
+
+    excludeManagedFields = true
+
+    # you can remove or hash some values in the events (after modifyValues you can define path in the JSON object,
+    # and the value can be hash:{hashFunction}, or remove to remove the object )
+    ; modifyValues.object.data.* = hash:sha256
+    ; modifyValues.object.metadata.annotations.* = remove
+
+    # You can exclude events by namespace with blacklist or whitelist only required namespaces
+    # blacklist.openshift_namespace = ^namespace0$
+    # whitelist.openshift_namespace = ^((namespace1)|(namespace2))$
+    # A cluster-scoped kind has no namespace: filter it by a path, such as object.metadata.name
+
+    [input.kubernetes_watch::resourcequota]
+    disabled = false
+
+    # How often every object is forwarded again; one no longer listed is forwarded as DELETED
+    # with "reason":"absent_from_relist"
+    refresh = 45m
+
+    apiVersion = v1
+    kind = ResourceQuota
+    namespace =
+
+    type = openshift_objects
+
+    index =
+
+    output =
+
+    excludeManagedFields = true
+
+    # you can remove or hash some values in the events (after modifyValues you can define path in the JSON object,
+    # and the value can be hash:{hashFunction}, or remove to remove the object )
+    ; modifyValues.object.data.* = hash:sha256
+    ; modifyValues.object.metadata.annotations.* = remove
+
+    # You can exclude events by namespace with blacklist or whitelist only required namespaces
+    # blacklist.openshift_namespace = ^namespace0$
+    # whitelist.openshift_namespace = ^((namespace1)|(namespace2))$
+    # A cluster-scoped kind has no namespace: filter it by a path, such as object.metadata.name
 ---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: collectorforopenshift
   namespace: collectorforopenshift
+  annotations:
+    collectord.collectord.io/logs-replace.ignoredebuglog-search: ^(TRACE|DEBUG) .*
+    collectord.collectord.io/logs-replace.ignoredebuglog-val: ""
   labels:
     app: collectorforopenshift
 spec:
-  # Default updateStrategy is OnDelete. For collectord RollingUpdate is suitable
-  # When you update configuration
   updateStrategy:
     type: RollingUpdate
-
   selector:
     matchLabels:
       daemon: collectorforopenshift
-
   template:
     metadata:
       name: collectorforopenshift
+      annotations:
+        # A change to the configuration files these pods mount rolls them:
+        # Collectord reads its inputs' configuration at startup. A ConfigMap managed
+        # outside the chart (configMap.create: false) gets no checksum: roll the pods
+        # with an annotation of your own under podAnnotations.
+        checksum/config: 2fb62542aa0403769c9d122b55fad265f357d32dfcf8a5093d680d281fcecf73
       labels:
         daemon: collectorforopenshift
     spec:
-      priorityClassName: collectorforopenshift-critical
+      priorityClassName: "system-node-critical"
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       serviceAccountName: collectorforopenshift
-      # We run this DaemonSet only for Non-Masters
+      nodeSelector:
+        kubernetes.io/os: linux
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: node-role.kubernetes.io/control-plane
-                operator: DoesNotExist
+              - key: eks.amazonaws.com/compute-type
+                operator: NotIn
+                values:
+                - fargate
+              - key: type
+                operator: NotIn
+                values:
+                - virtual-kubelet
       tolerations:
-      - operator: "Exists"
-        effect: "NoSchedule"
-      - operator: "Exists"
-        effect: "NoExecute"
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
       containers:
       - name: collectorforopenshift
-        # Stick to specific version
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.5
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.10.1
+        imagePullPolicy: Always
         livenessProbe:
+          failureThreshold: 3
           httpGet:
             host: 127.0.0.1
             path: /healthz
@@ -1552,8 +2292,8 @@ spec:
           initialDelaySeconds: 120
           periodSeconds: 60
           timeoutSeconds: 5
-          failureThreshold: 3
         readinessProbe:
+          failureThreshold: 3
           httpGet:
             host: 127.0.0.1
             path: /readyz
@@ -1561,129 +2301,9 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 15
           timeoutSeconds: 5
-          failureThreshold: 3
         securityContext:
-          privileged: true
           runAsUser: 0
-        # Define your resources if you need. Defaults should be fine for most.
-        resources:
-          limits:
-            cpu: 2000m
-            memory: 512Mi
-          requests:
-            cpu: 500m
-            memory: 256Mi
-        env:
-        - name: KUBERNETES_NODENAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        volumeMounts:
-        # We store state in /data folder (file positions)
-        - name: collectorforopenshift-state
-          mountPath: /data
-        # Configuration file deployed with ConfigMap
-        - name: collectorforopenshift-config
-          mountPath: /config/
-          readOnly: true
-        # Rootfs
-        - name: rootfs
-          mountPath: /rootfs/
-          readOnly: false
-          mountPropagation: HostToContainer
-        # correct timezone
-        - name: localtime
-          mountPath: /etc/localtime
-          readOnly: true
-      volumes:
-      # We store state directly on host, change this location, if
-      # your persistent volume is somewhere else
-      - name: collectorforopenshift-state
-        hostPath:
-          path: /var/lib/collectorforopenshift/data/
-          type: DirectoryOrCreate
-      # Location of rootfs
-      - name: rootfs
-        hostPath:
-          path: /
-      # correct timezone
-      - name: localtime
-        hostPath:
-          path: /etc/localtime
-      # configuration from ConfigMap
-      - name: collectorforopenshift-config
-        configMap:
-          name: collectorforopenshift
-          items:
-          - key: 001-general.conf
-            path: 001-general.conf
-          - key: 002-daemonset.conf
-            path: 002-daemonset.conf
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: collectorforopenshift-master
-  namespace: collectorforopenshift
-  labels:
-    app: collectorforopenshift
-spec:
-  updateStrategy:
-    type: RollingUpdate
-  selector:
-    matchLabels:
-      daemon: collectorforopenshift
-  template:
-    metadata:
-      name: collectorforopenshift-master
-      labels:
-        daemon: collectorforopenshift
-    spec:
-      priorityClassName: collectorforopenshift-critical
-      dnsPolicy: ClusterFirstWithHostNet
-      hostNetwork: true
-      serviceAccountName: collectorforopenshift
-      # Deploy only on master
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: node-role.kubernetes.io/control-plane
-                operator: Exists
-      tolerations:
-      - operator: "Exists"
-        effect: "NoSchedule"
-      - operator: "Exists"
-        effect: "NoExecute"
-      containers:
-      - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.5
-        livenessProbe:
-          httpGet:
-            host: 127.0.0.1
-            path: /healthz
-            port: 11888
-          initialDelaySeconds: 120
-          periodSeconds: 60
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            host: 127.0.0.1
-            path: /readyz
-            port: 11888
-          initialDelaySeconds: 10
-          periodSeconds: 15
-          timeoutSeconds: 5
-          failureThreshold: 3
-        securityContext:
           privileged: true
-          runAsUser: 0
         resources:
           limits:
             cpu: 2000m
@@ -1696,6 +2316,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: KUBERNETES_NODEIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
         - name: POD_NAME
           valueFrom:
             fieldRef:
@@ -1706,7 +2330,6 @@ spec:
         - name: collectorforopenshift-config
           mountPath: /config/
           readOnly: true
-          # Rootfs
         - name: rootfs
           mountPath: /rootfs/
           readOnly: false
@@ -1714,6 +2337,7 @@ spec:
         - name: localtime
           mountPath: /etc/localtime
           readOnly: true
+
       volumes:
       - name: collectorforopenshift-state
         hostPath:
@@ -1733,14 +2357,15 @@ spec:
             path: 001-general.conf
           - key: 002-daemonset.conf
             path: 002-daemonset.conf
-          - key: 003-daemonset-master.conf
-            path: 003-daemonset-master.conf
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: collectorforopenshift-addon
   namespace: collectorforopenshift
+  annotations:
+    collectord.collectord.io/logs-replace.ignoredebuglog-search: ^(TRACE|DEBUG) .*
+    collectord.collectord.io/logs-replace.ignoredebuglog-val: ""
   labels:
     app: collectorforopenshift
 spec:
@@ -1751,33 +2376,63 @@ spec:
   template:
     metadata:
       name: collectorforopenshift-addon
+      annotations:
+        # A change to the configuration files these pods mount rolls them:
+        # Collectord reads its inputs' configuration at startup. A ConfigMap managed
+        # outside the chart (configMap.create: false) gets no checksum: roll the pods
+        # with an annotation of your own under podAnnotations.
+        checksum/config: 6078ef811d8ca8fa9d9d49bc1d611c8bd25d41014e1cdbb2d9702dfa7403e69c
       labels:
         daemon: collectorforopenshift
     spec:
-      priorityClassName: collectorforopenshift-critical
+      priorityClassName: "system-cluster-critical"
       serviceAccountName: collectorforopenshift
+      nodeSelector:
+        kubernetes.io/os: linux
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: eks.amazonaws.com/compute-type
+                operator: NotIn
+                values:
+                - fargate
+              - key: type
+                operator: NotIn
+                values:
+                - virtual-kubelet
       containers:
       - name: collectorforopenshift
-        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.04.5
+        image: registry.connect.redhat.com/outcoldsolutions/collectorforopenshift:26.10.1
+        imagePullPolicy: Always
         livenessProbe:
+          failureThreshold: 3
           httpGet:
             path: /healthz
             port: 11888
           initialDelaySeconds: 120
           periodSeconds: 60
           timeoutSeconds: 5
-          failureThreshold: 3
         readinessProbe:
+          failureThreshold: 3
           httpGet:
             path: /readyz
             port: 11888
           initialDelaySeconds: 10
           periodSeconds: 15
           timeoutSeconds: 5
-          failureThreshold: 3
         securityContext:
-          privileged: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
           runAsUser: 0
+          seLinuxOptions:
+            type: spc_t
+          seccompProfile:
+            type: RuntimeDefault
         resources:
           limits:
             cpu: 1000m
@@ -1800,11 +2455,21 @@ spec:
         - name: collectorforopenshift-config
           mountPath: /config/
           readOnly: true
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
+
       volumes:
+      # The DaemonSet pod on this node owns the directory and the database the
+      # addon opens read-only. DirectoryOrCreate, so an addon scheduled first
+      # mounts it too; Collectord waits for the DaemonSet to create the database.
       - name: collectorforopenshift-state
         hostPath:
           path: /var/lib/collectorforopenshift/data/
-          type: Directory
+          type: DirectoryOrCreate
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
       - name: collectorforopenshift-config
         configMap:
           name: collectorforopenshift
@@ -1813,4 +2478,3 @@ spec:
             path: 001-general.conf
           - key: 004-addon.conf
             path: 004-addon.conf
-

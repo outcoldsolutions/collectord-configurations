@@ -1,0 +1,1346 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app: collectorforkubernetes-syslog
+  name: collectorforkubernetes-syslog
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: configurations.collectord.io
+spec:
+  group: collectord.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              additionalProperties: true
+            force:
+              type: boolean
+  scope: Cluster
+  names:
+    listKind: ConfigurationList
+    plural: configurations
+    singular: configuration
+    kind: Configuration
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: splunkoutputs.collectord.io
+spec:
+  group: collectord.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                insecure:
+                  type: boolean
+                token:
+                  type: string
+                  description: "Plain token"
+                tokenFromSecret:
+                  type: object
+                  description: "Reference to a Kubernetes Secret"
+                  properties:
+                    secret:
+                      type: string
+                    key:
+                      type: string
+                defaultMetricsIndex:
+                  type: string
+                  description: "Index of the metrics-index records sent through this output; empty for the token's default"
+                incorrectIndexBehavior:
+                  type: string
+                  description: "What happens to a record the token refuses"
+                  enum: ["RedirectToDefault", "Drop", "Retry"]
+                requireExplicitIndex:
+                  type: boolean
+                  description: "Drop a record that carries no index instead of sending it to the token's default"
+              oneOf:
+                - required: ["token"]
+                - required: ["tokenFromSecret"]
+  scope: Namespaced
+  names:
+    listKind: SplunkOutputList
+    plural: splunkoutputs
+    singular: splunkoutput
+    kind: SplunkOutput
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: collectorforkubernetes-syslog
+  name: collectorforkubernetes-syslog
+  namespace: collectorforkubernetes-syslog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: collectorforkubernetes-syslog
+  labels:
+    app: collectorforkubernetes-syslog
+rules:
+  - apiGroups:
+    - ""
+    resources:
+    - events
+    - namespaces
+    - nodes
+    - nodes/metrics
+    - persistentvolumeclaims
+    - persistentvolumes
+    - pods
+    - replicationcontrollers
+    - resourcequotas
+    - services
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - apps
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    - statefulsets
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - batch
+    resources:
+    - cronjobs
+    - jobs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - discovery.k8s.io
+    resources:
+    - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - rbac.authorization.k8s.io
+    resources:
+    - clusterroles
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - collectord.io
+    resources:
+    - configurations
+    - splunkoutputs
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups: []
+    nonResourceURLs:
+    - /metrics
+    resources: []
+    verbs:
+    - get
+  - apiGroups: []
+    nonResourceURLs:
+    - /api
+    - /api/*
+    - /apis
+    - /apis/*
+    resources: []
+    verbs:
+    - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: collectorforkubernetes-syslog
+  labels:
+    app: collectorforkubernetes-syslog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: collectorforkubernetes-syslog
+subjects:
+  - kind: ServiceAccount
+    name: collectorforkubernetes-syslog
+    namespace: collectorforkubernetes-syslog
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: collectorforkubernetes-syslog-critical-pods
+  namespace: collectorforkubernetes-syslog
+  labels:
+    app: collectorforkubernetes-syslog
+spec:
+  hard:
+    pods: 1G
+  scopeSelector:
+    matchExpressions:
+    - scopeName: PriorityClass
+      operator: In
+      values:
+      - system-cluster-critical
+      - system-node-critical
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collectorforkubernetes-syslog
+  namespace: collectorforkubernetes-syslog
+  labels:
+    app: collectorforkubernetes-syslog
+data:
+  001-general.conf: |
+    # The general configuration is used for all deployments
+    #
+    # Run collectord with the flag -conf and specify location of the configuration files.
+    #
+    # You can override all the values using environment variables with the format like
+    #   COLLECTOR__<ANYNAME>=<section>__<key>=<value>
+    # As an example you can set dataPath in [general] section as
+    #   COLLECTOR__DATAPATH=general__dataPath=C:\\some\\path\\data.db
+    # This parameter can be configured using -env-override, set it to empty string to disable this feature
+
+    [general]
+
+    # Please review license https://www.outcoldsolutions.com/legal/license-agreement/
+    # and accept license by changing the value to *true*
+    acceptLicense = false
+
+    # Location for the database
+    # Collectord stores positions of the files and internal state
+    dataPath = ./data/
+
+    # log level (accepted values are trace, debug, info, warn, error, fatal)
+    logLevel = info
+
+    # Internal http server - serves the liveness (/healthz) and readiness (/readyz)
+    # probes. DaemonSets run on the host network, so bind to loopback (127.0.0.1:11888)
+    # to keep the endpoints off the node IP; the kubelet still reaches them via
+    # httpGet.host 127.0.0.1. The addon runs off the host network and overrides the
+    # bind to 0.0.0.0 in 004-addon.conf so the kubelet can reach it on the pod IP.
+    # httpServerBinding = 0.0.0.0:11888
+    httpServerBinding =
+
+    httpServerLog = false
+
+    # telemetry report endpoint, set it to empty string to disable telemetry
+    telemetryEndpoint = https://license.outcold.solutions/telemetry/
+
+    licenseEndpoint = https://license.outcold.solutions/license/
+
+    # Only for the Outcold Solutions License Server; one on-premises uses [license.client]
+    licenseServerProxyUrl =
+
+    # user:password
+    licenseServerProxyBasicAuth =
+
+    license =
+
+    # Environment variable $KUBERNETES_NODENAME is used by default to setup hostname
+    # Use value below to override specific name
+    hostname =
+
+    # Default output for events, logs and metrics
+    # valid values: splunk and devnull
+    # Use devnull by default if you don't want to redirect data
+    defaultOutput = syslog
+
+    fileInputBufferSize = 8kb
+
+    fileInputLineMaxSize = 1mb
+
+    # Include custom fields to attach to every event, in example below every event sent to Splunk will hav
+    # indexed field my_environment=dev. Fields names should match to ^[a-z][_a-z0-9]*$
+    # Better way to configure that is to specify labels for Kubernetes Nodes.
+    # ; fields.my_environment = dev
+    # Identify the cluster if you are planning to monitor multiple clusters
+    fields.cluster = -
+
+    # Include EC2 Metadata (see list of possible fields https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html)
+    # Should be in format ec2Metadata.{desired_field_name} = {url path to read the value}
+    # ec2Metadata.ec2_instance_id = /latest/meta-data/instance-id
+    # ec2Metadata.ec2_instance_type = /latest/meta-data/instance-type
+
+    # subdomain for the annotations added to the pods, workloads, namespaces or containers, like splunk.collectord.io/..
+    annotationsSubdomain = syslog
+
+    # configure global thruput per second for forwarded logs (metrics are not included)
+    # for example if you set `thruputPerSecond = 512Kb`, that will limit amount of logs forwarded
+    # from the single Collectord instance to 512Kb per second.
+    # You can configure thruput individually for the logs (including specific for container logs) below
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # How Collectord spells the fields it composes: "_" (kubernetes_pod_name, the default) or "."
+    fieldsSeparator =
+
+    # For input.files::X and application logs, when glob or match are configured, Collectord can automatically
+    # detect gzipped files and skip them (based on the extensions or magic numbers)
+    autoSkipGzipFiles = true
+
+    # Publish to non-default outputs asynchronously (default), so a slow or down output does not
+    # block the others; false holds the pipeline back instead of dropping events.
+    multioutput.async = true
+
+    # Buffer size for the async proxy (default 100), per output of each pipeline. When it and
+    # the output's queue are full, events are dropped (multioutput_dropped_events).
+    multioutput.asyncBufferSize = 100
+
+    [license.client]
+    # point to the license located on the HTTP web server, or a hosted by the Collectord running as license server
+    url =
+    basicAuth =
+    insecure = false
+    capath =
+    caname =
+    proxyUrl =
+
+    # user:password
+    proxyBasicAuth =
+
+    [general.kubernetes]
+
+    # Override service URL for Kubernetes (default is ${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT})
+    serviceURL =
+
+    # Environment variable $KUBERNETES_NODENAME is used by default to setup nodeName
+    # Use it only when you need to override it
+    nodeName =
+
+    tokenPath = /var/run/secrets/kubernetes.io/serviceaccount/token
+    certPath = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    # Default timeout for http responses. The streaming/watch requests depend on this timeout.
+    timeout = 30m
+
+    # How long to keep the cache for the recent calls to API server (to limit number of calls when collectord discovers new pods)
+    metadataTTL = 30s
+
+    podsCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?$
+
+    containersCgroupFilter = ^/([^/\s]+/)*kubepods(\.slice)?/((kubepods-)?(burstable|besteffort)(\.slice)?/)?([^/]*)pod([0-9a-f]{32}|[0-9a-f\-_]{36})(\.slice)?/(docker-|crio-|cri-\w+-)?[0-9a-f]{64}(\.scope)?(\/.+)?$
+
+    # path to the kubelet root location (use it to discover application logs for emptyDir)
+    # the expected format is `pods/{pod-id}/volumes/kubernetes.io~empty-dir/{volume-name}/_data/`
+    volumesRootDir = /rootfs/var/lib/kubelet/
+
+    # You can attach annotations as a metadata, using the format
+    #   includeAnnotations.{key} = {regexp}
+    # For example if you want to include all annotations that starts with `prometheus.io` or `example.com` you can include
+    # the following format:
+    #   includeAnnotations.1 = ^prometheus\.io.*
+    #   includeAnnotations.2 = ^example\.com.*
+
+    # You can exclude labels from metadata, using the format
+    #   excludeLabels.{key} = {regexp}
+    # For example if you want to exclude all labels that starts with `prometheus.io` or `example.com` you can include
+    # the following format:
+    #   excludeLabels.1 = ^prometheus\.io.*
+    #   excludeLabels.2 = ^example\.com.*
+
+    # watch for changes (annotations) in the objects
+    watch.namespace = v1/namespace
+    watch.deployment = apps/v1/deployment
+    watch.configuration = collectord.io/v1/configuration
+
+    # Collectord can review the assigned ClusterRole and traverse metadata for the Pods only for the Owner objects
+    # that are defined in the ClusterRole, ignoring anything else, it does not have access to.
+    # This way Collectord does not generate 403 requests on API Server
+    clusterRole = collectorforkubernetes-syslog
+
+    # Alternative of telling Collectord about the ClusterRole is to manually list the objects.
+    # You can define which objects Collectord should traverse when it sees Owners.
+    ; traverseOwnership.namespaces = v1/namespace
+
+    [output.syslog]
+
+    # tcp or udp
+    network = tcp
+    address =
+  002-daemonset.conf: |
+    [general.cri-o]
+
+    # url for CRIO API, only unix socket is supported
+    url = unix:///rootfs/var/run/crio/crio.sock
+
+    # Timeout for http responses to docker client. The streaming requests depend on this timeout.
+    timeout = 1m
+
+    [general.containerd]
+    # Runtime can be on /rootfs/run/containerd (depends on the Linux distribution)
+    runtimePath = /rootfs/var/run/containerd
+    namespace = k8s.io
+
+    [input.files]
+
+    disabled = false
+
+    # root location of docker log files
+    # logs are expected in standard docker format like {containerID}/{containerID}-json.log
+    # rotated files
+    path = /rootfs/var/lib/docker/containers/
+
+    # root location of CRI-O files
+    # logs are expected in Kubernetes format, like {podID}/{containerName}/0.log
+    crioPath = /rootfs/var/log/pods/
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often to look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    type = k8s_logs
+
+    syslog.format = {{type}}|{{timestamp::format(2006-01-02T15:04:05.999999999Z07:00)}}|{{cluster}}|{{host}}|{{namespace}}|{{pod_id}}|{{pod_name}}|{{container_name}}|{{stream}}|{{message}}
+
+    # docker splits events when they are larger than 10-100k (depends on the docker version)
+    # we join them together by default and forward to Splunk as one event
+    joinPartialEvents = true
+
+    # In case if your containers report messages with terminal colors or other escape sequences
+    # you can enable strip for all the containers in one place.
+    # Better is to enable it only for required container with the annotation syslog.collectord.io/logs-escapeterminalsequences=true
+    stripTerminalEscapeSequences = false
+
+    # Regexp used for stripping terminal colors, it does not stip all the escape sequences
+    # Read http://man7.org/linux/man-pages/man4/console_codes.4.html for more information
+    stripTerminalEscapeSequencesRegex = (\x1b\[\d{1,3}(;\d{1,3})*m)|(\x07)|(\x1b]\d+(\s\d)?;[^\x07]+\x07)|(.*\x1b\[K)
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    output =
+
+    # configure default thruput per second for for each container log
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the single container to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # Read rotated logs the kubelet compressed before Collectord read them; false counts them lost
+    readCompressed = true
+
+    # Bytes of those logs inflated at once, node-wide, under [general] dataPath
+    compressedInflateBudget = 256MiB
+
+    # Group each stream's repeated lines into one event per run that counts them.
+    # Off unless true; a workload overrides it with its
+    # syslog.collectord.io/logs-repeat-enabled annotation.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each stream may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each stream's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true; a workload overrides it with its
+    # syslog.collectord.io/logs-fold-enabled annotation.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each stream may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each stream's top patterns every interval, as events of their own.
+    # Off unless true; a workload overrides it with its
+    # syslog.collectord.io/logs-patterns-enabled annotation.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each stream's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.app_logs]
+
+    disabled = false
+
+    # root location of mounts (applies to hostPath mounts only), if the hostPath differs inside container from the path on host
+    root = /rootfs/
+
+    # how often to review list of available volumes
+    syncInterval = 5s
+
+    glob = *.log*
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often to look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    type = k8s_logs
+
+    syslog.format = {{type}}|{{timestamp::format(2006-01-02T15:04:05.999999999Z07:00)}}|{{cluster}}|{{host}}|{{namespace}}|{{pod_id}}|{{pod_name}}|{{container_name}}|{{file_name}}|{{message}}
+
+    # we split files using new line character, with this configuration you can specify what defines the new event
+    # after new line
+    eventPatternRegex = ^[^\s]
+    eventPatternMaxInterval = 100ms
+    eventPatternMaxWait = 1s
+    eventPatternMaxSize = 1MB
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    output =
+
+    # configure default thruput per second for for each container log
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the single container to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # Configure how long Collectord should keep the file descriptors open for files, that has not been forwarded yet
+    # When using PVC, and if pipeline is lagging behind, Collectord holding open fd for files, can cause long termination
+    # of pods, as kubelet cannot unmount the PVC volume from the system
+    maxHoldAfterClose = 1800s
+
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true; a workload overrides it with its
+    # syslog.collectord.io/volume.<n>-logs-repeat-enabled annotation.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true; a workload overrides it with its
+    # syslog.collectord.io/volume.<n>-logs-fold-enabled annotation.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true; a workload overrides it with its
+    # syslog.collectord.io/volume.<n>-logs-patterns-enabled annotation.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.files::audit-logs]
+
+    disabled = false
+
+    path = /rootfs/var/log/kube-apiserver/
+
+    glob = audit*.log
+
+    match =
+
+    # limit search only on one level
+    recursive = false
+    nodeSelector = node-role.kubernetes.io/control-plane
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    type = k8s_audit_logs
+
+    syslog.format = {{type}}|{{timestamp::format(2006-01-02T15:04:05.999999999Z07:00)}}|{{cluster}}|{{message}}
+
+    extraction = (?P<message>.*"stageTimestamp":"(?P<timestamp>[^"]+)".*)
+    extractionMessageField = message
+
+    timestampField = timestamp
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat = 2006-01-02T15:04:05.999999999Z07:00
+
+    # timestamp location (if not defined by format)
+    timestampLocation =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern =
+
+    # Blacklisting and whitelisting the logs
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
+
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing this input
+    # thruputExempt.0 = ^regexp$
+
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.files::logs]
+
+    disabled = false
+
+    path = /rootfs/var/log/
+
+    glob =
+
+    match = ^(([\w\-.]+\.log(.[\d\-]+)?)|(docker))$
+    exclude = ^(auth|cron|daemon|kern|lpr|mail|user|ufw)\.log(.[\d\-]+)?$
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    type = k8s_host_logs
+
+    syslog.format = {{type}}|{{timestamp::format(2006-01-02T15:04:05.999999999Z07:00)}}|{{cluster}}|{{host}}|{{file_name}}|{{message}}
+
+    extraction =
+    extractionMessageField =
+
+    timestampField =
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat =
+
+    # timestamp location (if not defined by format)
+    timestampLocation =
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern =
+
+    # Blacklisting and whitelisting the logs
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
+
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing this input
+    # thruputExempt.0 = ^regexp$
+
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.files::syslog]
+
+    disabled = true
+
+    path = /rootfs/var/log/
+
+    glob =
+
+    match = ^(syslog|messages|auth\.log)(.[\d\-]+)?$
+
+    # limit search only on one level
+    recursive = false
+
+    # files are read using polling schema, when reach the EOF how often to check if files got updated
+    pollingInterval = 250ms
+
+    # how often o look for the new files under logs path
+    walkingInterval = 5s
+
+    # include verbose fields in events (file offset)
+    verboseFields = false
+
+    type = k8s_host_logs
+
+    syslog.format = {{type}}|{{timestamp::format(2006-01-02T15:04:05.999999999Z07:00)}}|{{cluster}}|{{host}}|{{file_name}}|{{message}}
+
+    extraction = ^(?P<timestamp>[A-Za-z]+\s+\d+\s\d+:\d+:\d+|\d{4}-\d{2}-\d{2}T\S+)\s(?P<syslog_hostname>[^\s]+)\s(?P<syslog_component>[^:\[]+)(\[(?P<syslog_pid>\d+)\])?: (.+)$
+    extractionMessageField =
+
+    # the extracted fields naming the process that wrote a line, which groups its lines apart
+    extractionWriterFields = syslog_hostname, syslog_component, syslog_pid
+
+    timestampField = timestamp
+
+    # format for timestamp
+    # the layout defines the format by showing how the reference time, defined to be `Mon Jan 2 15:04:05 -0700 MST 2006`
+    timestampFormat = @syslog
+
+    # Adjust date, if month/day aren't set in format
+    timestampSetMonth = false
+    timestampSetDay = false
+
+    # timestamp location (if not defined by format)
+    timestampLocation = Local
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key for hash based sampling (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    output =
+
+    # configure default thruput per second for this files group
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the files in this group to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern =
+
+    # Blacklisting and whitelisting the logs
+    # whitelist.0 = ^regexp$
+    # blacklist.0 = ^regexp$
+
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing this input
+    # thruputExempt.0 = ^regexp$
+
+    # Group each file's repeated lines into one event per run that counts them.
+    # Off unless true.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What each file may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each file's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What each file may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report each file's top patterns every interval, as events of their own.
+    # Off unless true.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What each file's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    [input.journald]
+
+    disabled = false
+
+    path.persistent = /rootfs/var/log/journal/
+    path.volatile = /rootfs/run/log/journal/
+
+    # when reach end of journald, how often to pull
+    pollingInterval = 250ms
+
+    # if you don't want to forward journald from the beginning,
+    # set the oldest event in relative value, like -14h or -30m or -30s (h/m/s supported)
+    startFromRel =
+
+    type = k8s_host_logs
+
+    syslog.format = {{type}}|{{timestamp::format(2006-01-02T15:04:05.999999999Z07:00)}}|{{cluster}}|{{host}}|journald|{{message}}
+
+    # sample output (-1 does not sample, 20 - only 20% of the logs should be forwarded)
+    samplingPercent = -1
+
+    # sampling key (should be regexp with the named match pattern `key`)
+    samplingKey =
+
+    # how often to reopen the journald to free old files
+    reopenInterval = 1h
+
+    output =
+
+    # configure default thruput per second for journald
+    # for example if you set `thruputPerSecond = 128Kb`, that will limit amount of logs forwarded
+    # from the journald to 128Kb per second.
+    thruputPerSecond =
+
+    # Configure events that are too old to be forwarded, for example 168h (7 days) - that will drop all events
+    # older than 7 days
+    tooOldEvents =
+
+    # Configure events that are too new to be forwarded, for example 1h - that will drop all events that are 1h in future
+    tooNewEvents =
+
+    # by default every new event should start from not space symbol
+    eventPattern = ^[^\s]
+
+    # By default ignoring verbose hyperkube logs (all INFO messages)
+
+    # Lines matching a thruputExempt pattern pass every thruput cap and sampling; with one set,
+    # a spent cap drops the other lines instead of pausing journald
+
+    # Move Journald logs reader to a separate process, to prevent process from crashing in case of corrupted log files
+    spawnExternalProcess = false
+
+    # Group each writer's repeated lines into one event per run that counts them.
+    # Off unless true.
+    # A writer is a unit, identifier, command, process, priority and facility: never grouped with another.
+    repeatEnabled = false
+
+    # How long a run is held before its event goes out, up to 10m (a crash resends up to that much)
+    # repeatMaxSpan = 1m
+
+    # Add every line's time to a run's event (collectord_repeat_offsets, milliseconds from its own)
+    # repeatOffsets = false
+
+    # What the journal, all its writers together, may remember: distinct lines, lines one event stands for, and bytes
+    # repeatMaxKeys = 256
+    # repeatMaxCount = 1000
+    # repeatMaxBytes = 256KB
+
+    # Fold each writer's lines of one pattern past foldMaxPerMinute into one summary a minute.
+    # Lossy: folded lines are not sent. Off unless true.
+    # A writer is a unit, identifier, command, process, priority and facility: never folded with another.
+    foldEnabled = false
+
+    # Lines of one pattern a minute sent before the rest fold
+    # foldMaxPerMinute = 60
+
+    # Lines never folded (a regular expression; empty: the default)
+    # foldKeep = (?i)error|exception|fatal|panic
+
+    # What the journal, all its writers together, may keep a minute: its patterns and summaries
+    # foldMaxBytes = 256KB
+
+    # Report the journal's top patterns every interval, as events of their own.
+    # Off unless true.
+    # A writer is a unit, identifier, command, process, priority and facility: its lines never share a pattern with another's, and the top patterns are of all its writers together.
+    patternsEnabled = false
+
+    # How often a report goes out, from 1m to 24h
+    # patternsInterval = 15m
+
+    # How many patterns a report carries, up to 100
+    # patternsTop = 20
+
+    # What the journal's patterns may keep; past it a new one takes the place of the lightest
+    # patternsMaxBytes = 256KB
+
+    # The report events' type (empty: the input's type with _patterns after it)
+    # patternsType =
+
+    # Pipe to join events (container logs only)
+    [pipe.join]
+
+    disabled = false
+
+    maxInterval = 100ms
+
+    maxWait = 1s
+
+    maxSize = 1MB
+
+    # Default pattern to indicate new message (should start not from space)
+    patternRegex = ^[^\s]
+
+    # You can configure global replace rules for the events, which can help to remove sensitive data
+    # from logs before they are sent to outputs. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we replace password=TEST with password=********
+    ; [pipe.replace::name]
+    ; patternRegex = (password=)([^\s]+)
+    ; replace = $1********
+
+    # You can configure global hash rules for the events, which can help to hide sensitive data
+    # from logs before they are sent to outputs. Those rules will be applied to all pipelines for container logs, host logs,
+    # application logs and events.
+    # In the following example we hash IP addresses with fnv-1a-64
+    ; [pipe.hash::name]
+    ; match = (\d{1,3}\.){3}\d{1,3}'
+    ; function = fnv-1a-64
+
+    # Log lines matching patternRegex pass every thruput cap and sampling, in the workloads whose
+    # fields match every matchRegex.<field>; over its cap such a workload drops its other lines
+    # instead of pausing. Select by namespace: pod, container and image names are the workload
+    # owner's to choose, and label fields never match
+    ; [pipe.thruput_exempt::payments-audit]
+    ; matchRegex.kubernetes_namespace = ^payments$
+    ; patternRegex = ^AUDIT
+
+    # Count the events and bytes leaving every pipeline (pipeline_events, pipeline_bytes);
+    # maxSeries bounds the label combinations. Fields are written with underscores.
+    ; [pipe.eventcount]
+    ; labels = index, sourcetype, output
+    ; fields = kubernetes_namespace
+    ; maxSeries = 1000
+  004-addon.conf: |
+    [general]
+    # addons can be run in parallel with agents
+    addon = true
+
+    [input.kubernetes_events]
+
+    disabled = false
+
+    type = k8s_events
+
+    syslog.format = {{type}}|{{timestamp::format(2006-01-02T15:04:05.999999999Z07:00)}}|{{cluster}}|{{message}}
+
+    output =
+
+    excludeManagedFields = true
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: collectorforkubernetes-syslog
+  namespace: collectorforkubernetes-syslog
+  annotations:
+    collectord.collectord.io/logs-replace.ignoredebuglog-search: ^(TRACE|DEBUG) .*
+    collectord.collectord.io/logs-replace.ignoredebuglog-val: ""
+  labels:
+    app: collectorforkubernetes-syslog
+spec:
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      daemon: collectorforkubernetes-syslog
+  template:
+    metadata:
+      name: collectorforkubernetes-syslog
+      annotations:
+        # A change to the configuration files these pods mount rolls them:
+        # Collectord reads its inputs' configuration at startup. A ConfigMap managed
+        # outside the chart (configMap.create: false) gets no checksum: roll the pods
+        # with an annotation of your own under podAnnotations.
+        checksum/config: 57c6ea8d5486414458b15aab87e944a8677184ed61156b171732868f4a28ad6c
+      labels:
+        daemon: collectorforkubernetes-syslog
+    spec:
+      priorityClassName: "system-node-critical"
+      dnsPolicy: ClusterFirstWithHostNet
+      hostNetwork: true
+      serviceAccountName: collectorforkubernetes-syslog
+      nodeSelector:
+        kubernetes.io/os: linux
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: eks.amazonaws.com/compute-type
+                operator: NotIn
+                values:
+                - fargate
+              - key: type
+                operator: NotIn
+                values:
+                - virtual-kubelet
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      containers:
+      - name: collectorforkubernetes-syslog
+        image: registry.outcold.solutions/outcoldsolutions/collectorforkubernetes:26.10.1
+        imagePullPolicy: Always
+        securityContext:
+          runAsUser: 0
+          privileged: true
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 1024Mi
+          requests:
+            cpu: 500m
+            memory: 256Mi
+        env:
+        - name: KUBERNETES_NODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: KUBERNETES_NODEIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: collectorforkubernetes-syslog-state
+          mountPath: /data
+        - name: collectorforkubernetes-syslog-config
+          mountPath: /config/
+          readOnly: true
+        - name: rootfs
+          mountPath: /rootfs/
+          readOnly: false
+          mountPropagation: HostToContainer
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
+
+      volumes:
+      - name: collectorforkubernetes-syslog-state
+        hostPath:
+          path: /var/lib/collectorforkubernetes-syslog/data/
+          type: DirectoryOrCreate
+      - name: rootfs
+        hostPath:
+          path: /
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
+      - name: collectorforkubernetes-syslog-config
+        configMap:
+          name: collectorforkubernetes-syslog
+          items:
+          - key: 001-general.conf
+            path: 001-general.conf
+          - key: 002-daemonset.conf
+            path: 002-daemonset.conf
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collectorforkubernetes-syslog-addon
+  namespace: collectorforkubernetes-syslog
+  annotations:
+    collectord.collectord.io/logs-replace.ignoredebuglog-search: ^(TRACE|DEBUG) .*
+    collectord.collectord.io/logs-replace.ignoredebuglog-val: ""
+  labels:
+    app: collectorforkubernetes-syslog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      daemon: collectorforkubernetes-syslog
+  template:
+    metadata:
+      name: collectorforkubernetes-syslog-addon
+      annotations:
+        # A change to the configuration files these pods mount rolls them:
+        # Collectord reads its inputs' configuration at startup. A ConfigMap managed
+        # outside the chart (configMap.create: false) gets no checksum: roll the pods
+        # with an annotation of your own under podAnnotations.
+        checksum/config: 1f42d2568dfe2791b5710359d68f76596429e28b71cf85069e740231b975875f
+      labels:
+        daemon: collectorforkubernetes-syslog
+    spec:
+      priorityClassName: "system-cluster-critical"
+      serviceAccountName: collectorforkubernetes-syslog
+      nodeSelector:
+        kubernetes.io/os: linux
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: eks.amazonaws.com/compute-type
+                operator: NotIn
+                values:
+                - fargate
+              - key: type
+                operator: NotIn
+                values:
+                - virtual-kubelet
+      containers:
+      - name: collectorforkubernetes-syslog
+        image: registry.outcold.solutions/outcoldsolutions/collectorforkubernetes:26.10.1
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          runAsUser: 0
+          seLinuxOptions:
+            type: spc_t
+          seccompProfile:
+            type: RuntimeDefault
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 64Mi
+        env:
+        - name: KUBERNETES_NODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: collectorforkubernetes-syslog-state
+          mountPath: /data
+        - name: collectorforkubernetes-syslog-config
+          mountPath: /config/
+          readOnly: true
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
+
+      volumes:
+      # The DaemonSet pod on this node owns the directory and the database the
+      # addon opens read-only. DirectoryOrCreate, so an addon scheduled first
+      # mounts it too; Collectord waits for the DaemonSet to create the database.
+      - name: collectorforkubernetes-syslog-state
+        hostPath:
+          path: /var/lib/collectorforkubernetes-syslog/data/
+          type: DirectoryOrCreate
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
+      - name: collectorforkubernetes-syslog-config
+        configMap:
+          name: collectorforkubernetes-syslog
+          items:
+          - key: 001-general.conf
+            path: 001-general.conf
+          - key: 004-addon.conf
+            path: 004-addon.conf
