@@ -336,7 +336,7 @@ data:
     hostname =
 
     # Default output for events, logs and metrics
-    # valid values: splunk and devnull
+    # valid values: splunk, s2s, otlp and devnull
     # Use devnull by default if you don't want to redirect data
     defaultOutput = splunk
 
@@ -383,8 +383,8 @@ data:
     # detect gzipped files and skip them (based on the extensions or magic numbers)
     autoSkipGzipFiles = true
 
-    # Publish to non-default outputs asynchronously (default), so a slow or down output does not
-    # block the others; false holds the pipeline back instead of dropping events.
+    # Publish to non-default outputs asynchronously (default): one that stops taking events holds
+    # the others back a second at most, then drops; false holds the pipeline back instead.
     multioutput.async = true
 
     # Buffer size for the async proxy (default 100), per output of each pipeline. When it and
@@ -522,6 +522,9 @@ data:
     # When configuring scrapping with collectord using annotations use prometheus.1-AuthorizationKey=key1
     # authorization.key1 = Bearer FOO
 
+    # The namespaces whose pods can use a key; any pod can when it is not set
+    # authorizationNamespaces.key1 = monitoring,kube-system
+
     [output.splunk]
 
     url =
@@ -535,6 +538,10 @@ data:
     #                             failure (connection or HTTP status code >= 500)
     # With round-robin and random-with-round-robin, the instances on a failed url can all move to the same next one.
     urlSelection = random
+
+    # With several urls, how long to send to one before moving to the next one urlSelection picks,
+    # leaving out one that failed in the last 5 minutes (0: only after a failure)
+    loadBalanceFrequency = 5m
     token =
     insecure = false
     caPath =
@@ -1599,8 +1606,6 @@ data:
     # Override host (environment variables are supported)
     host = ${KUBERNETES_NODENAME}
 
-    source = controller
-
     interval = 60s
 
     timeout = 60s
@@ -1683,8 +1688,6 @@ data:
     # Override host (environment variables are supported)
     host = ${KUBERNETES_NODENAME}
 
-    source = coredns
-
     interval = 60s
 
     timeout = 60s
@@ -1738,6 +1741,71 @@ data:
     whitelist.10 = ^process_start_time_seconds$
     whitelist.11 = ^process_virtual_memory_bytes$
 
+    [input.prometheus::dcgm]
+
+    disabled = false
+
+    type = openshift_prometheus
+
+    index =
+
+    source = dcgm
+
+    # indexType (events, metrics or both) overrides [general] defaultIndexType. Set metricsIndex or
+    # [output.splunk] defaultMetricsIndex: the HEC token's default index is normally an events index.
+    # metricsOutput: an output whose HEC token can write to the metrics index.
+    metricsIndex =
+    metricsOutput =
+
+    # Override host (environment variables are supported)
+    host = ${KUBERNETES_NODENAME}
+
+    interval = 60s
+
+    timeout = 60s
+
+    # === WHERE: pick one of podSelector, endpointSlice, service, or endpoint(s) ===
+    # podSelector (with podNamespace): the pods on this node a label selector matches;
+    # endpoint(s) beside it are the fallback on a node where none runs.
+    podNamespace = nvidia-gpu-operator
+    podSelector = app=nvidia-dcgm-exporter
+
+    # endpointSlice / service: <name>.<namespace>. Omit the namespace to aggregate cluster-wide.
+
+    # endpoint.N: literal URLs, the first that answers
+
+    # nodeSelector: the nodes the literal endpoint(s) are scraped on
+
+    # === HOW: port (number) or portName, plus scheme and path ===
+    port = 9400
+
+    scheme = http
+    path = /metrics
+
+    # token for "Authorization: Bearer $(cat tokenPath)"
+    tokenPath =
+
+    # server certificate for certificate validation
+    certPath =
+
+    clientCertPath =
+
+    insecure = false
+
+    includeHelp = false
+
+    output =
+
+    # Regular expressions on the metric name: with a whitelist, only the matching metrics are sent
+
+    whitelist.1 = ^DCGM_FI_PROF_GR_ENGINE_ACTIVE$
+    whitelist.2 = ^DCGM_FI_DEV_GPU_UTIL$
+    whitelist.3 = ^DCGM_FI_DEV_FB_USED$
+    whitelist.4 = ^DCGM_FI_DEV_FB_FREE$
+    whitelist.5 = ^DCGM_FI_DEV_FB_RESERVED$
+    whitelist.6 = ^DCGM_FI_DEV_GPU_TEMP$
+    whitelist.7 = ^DCGM_FI_DEV_POWER_USAGE$
+
     [input.prometheus::etcd]
 
     disabled = false
@@ -1756,8 +1824,6 @@ data:
 
     # Override host (environment variables are supported)
     host = ${KUBERNETES_NODENAME}
-
-    source = etcd
 
     interval = 60s
 
@@ -1854,8 +1920,6 @@ data:
     # Override host (environment variables are supported)
     host = ${KUBERNETES_NODENAME}
 
-    source = kubelet
-
     interval = 60s
 
     timeout = 60s
@@ -1932,8 +1996,6 @@ data:
 
     # Override host (environment variables are supported)
     host = ${KUBERNETES_NODENAME}
-
-    source = kubernetes-api
 
     interval = 60s
 
@@ -2017,8 +2079,6 @@ data:
 
     # Override host (environment variables are supported)
     host = ${KUBERNETES_NODENAME}
-
-    source = scheduler
 
     interval = 60s
 
@@ -2251,7 +2311,7 @@ spec:
         # Collectord reads its inputs' configuration at startup. A ConfigMap managed
         # outside the chart (configMap.create: false) gets no checksum: roll the pods
         # with an annotation of your own under podAnnotations.
-        checksum/config: 2fb62542aa0403769c9d122b55fad265f357d32dfcf8a5093d680d281fcecf73
+        checksum/config: 1e65475333438bdeb0a9cb74c59776e5010603dea711429fe300f81d6d6750da
       labels:
         daemon: collectorforopenshift
     spec:
@@ -2281,8 +2341,8 @@ spec:
         operator: Exists
       containers:
       - name: collectorforopenshift
-        image: registry.outcold.solutions/outcoldsolutions/collectorforopenshift:26.10.1
-        imagePullPolicy: Always
+        image: registry.outcold.solutions/outcoldsolutions/collectorforopenshift:26.10.2
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
           httpGet:
@@ -2381,7 +2441,7 @@ spec:
         # Collectord reads its inputs' configuration at startup. A ConfigMap managed
         # outside the chart (configMap.create: false) gets no checksum: roll the pods
         # with an annotation of your own under podAnnotations.
-        checksum/config: 6078ef811d8ca8fa9d9d49bc1d611c8bd25d41014e1cdbb2d9702dfa7403e69c
+        checksum/config: b1d47a5ba9acd620a505eb768227b6409aa03c6b698f39315bc89bd0ec7cadbc
       labels:
         daemon: collectorforopenshift
     spec:
@@ -2404,8 +2464,8 @@ spec:
                 - virtual-kubelet
       containers:
       - name: collectorforopenshift
-        image: registry.outcold.solutions/outcoldsolutions/collectorforopenshift:26.10.1
-        imagePullPolicy: Always
+        image: registry.outcold.solutions/outcoldsolutions/collectorforopenshift:26.10.2
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
           httpGet:

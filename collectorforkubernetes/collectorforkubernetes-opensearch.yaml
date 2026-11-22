@@ -274,7 +274,7 @@ data:
     hostname =
 
     # Default output for events, logs and metrics
-    # valid values: splunk and devnull
+    # valid values: splunk, s2s, otlp and devnull
     # Use devnull by default if you don't want to redirect data
     defaultOutput = elasticsearch
 
@@ -327,8 +327,8 @@ data:
     # detect gzipped files and skip them (based on the extensions or magic numbers)
     autoSkipGzipFiles = true
 
-    # Publish to non-default outputs asynchronously (default), so a slow or down output does not
-    # block the others; false holds the pipeline back instead of dropping events.
+    # Publish to non-default outputs asynchronously (default): one that stops taking events holds
+    # the others back a second at most, then drops; false holds the pipeline back instead.
     multioutput.async = true
 
     # Buffer size for the async proxy (default 100), per output of each pipeline. When it and
@@ -1628,7 +1628,7 @@ spec:
         # Collectord reads its inputs' configuration at startup. A ConfigMap managed
         # outside the chart (configMap.create: false) gets no checksum: roll the pods
         # with an annotation of your own under podAnnotations.
-        checksum/config: d8508fe54b1442555bc52064b6627fbce02fc14fc7abb4737816d2c7ca64a10e
+        checksum/config: eda33ba7c4380936977f996895c80e5408fb39232909097415838d298d539a33
       labels:
         daemon: collectorforkubernetes-elasticsearch
     spec:
@@ -1658,8 +1658,8 @@ spec:
         operator: Exists
       containers:
       - name: collectorforkubernetes
-        image: registry.outcold.solutions/outcoldsolutions/collectorforkubernetes:26.10.1
-        imagePullPolicy: Always
+        image: registry.outcold.solutions/outcoldsolutions/collectorforkubernetes:26.10.2
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
           httpGet:
@@ -1762,7 +1762,7 @@ spec:
         # Collectord reads its inputs' configuration at startup. A ConfigMap managed
         # outside the chart (configMap.create: false) gets no checksum: roll the pods
         # with an annotation of your own under podAnnotations.
-        checksum/config: 7a25544e17975af6d1162b003e28d25e3b0eec9aacc91688bb2275e2c2fb3b50
+        checksum/config: d5c8ddccfa0cfe7883bfe2d848809157e30b4f2122f932ac4286243880a993cb
       labels:
         daemon: collectorforkubernetes-elasticsearch
     spec:
@@ -1785,8 +1785,8 @@ spec:
                 - virtual-kubelet
       containers:
       - name: collectorforkubernetes
-        image: registry.outcold.solutions/outcoldsolutions/collectorforkubernetes:26.10.1
-        imagePullPolicy: Always
+        image: registry.outcold.solutions/outcoldsolutions/collectorforkubernetes:26.10.2
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
           httpGet:
